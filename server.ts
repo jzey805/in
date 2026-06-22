@@ -707,8 +707,8 @@ const FALLBACK_CHECK_PRICE = {
   verdict: "合理",
   newPrice: "$45 AUD in Kmart / Target 类似款",
   fairUsedPrice: "$15 - $25 AUD",
-  reasoning: "【AI 安全盾守护提示】受当前系统访问限流影响，已为您自动启动离线估价守卫。根据在澳中国学业和生活惯例，Kmart、IKEA 及 Target 全新基础电器的指导价大约在 $30-$50 AUD 之间，极具性价比且带全澳联保。若对此款二手有兴趣，请在交易中强烈主张使用 Serene 的‘资金托管双向担保’支付机制面交，以防钱款被提前骗走。",
-  painConversion: "折合打工时薪（澳大利亚最低法定标准约 $24/小时）约 1-1.5 小时的辛勤付出。比起在外卖软件点两顿高昂的外买订单，价格依然属于省钱的健康流转范畴，但面交时一定要认准托管交付。"
+  reasoning: "⚠️ 当前因网络配额限制无法联网实时验价，以下提供全澳生活防坑盾离线估价参考：根据在澳中国留学生的生活常识，Kmart、IKEA 及 Target 的全新基础替代品往往不仅价格极度低廉（约 $35-$50 AUD），还提供正规商铺的保修期。若对此款二手电品有兴趣，请在交易中强烈主张使用 Serene 提供的‘资金托管双向担保’支付机制面交，以防钱款被提前骗走或遭遇货不对板的退款纠纷。",
+  painConversion: "折合澳大利亚当前最低法定打工时薪（约 $24 AUD/小时）约 1-1.5 小时。比起叫一顿 $30+ AUD 的送餐外卖，自取二手能省下一笔不菲的花销，但当面检查无误再交付定金，谨防网上诈骗！"
 };
 
 const FALLBACK_MATCH_COMPANION = {
@@ -760,42 +760,31 @@ app.post("/api/check-price", async (req, res) => {
 - 描述: "${description || "无描述"}"
 - 挂牌销售价: $${price} AUD
 
-请开启内置的 Google Search 全网检索（通过 tools: [{ googleSearch: {} }]），在澳洲当地主流实体大店（如 Kmart, IKEA, JB Hi-Fi, Apple Store, Target, Officeworks 等）及主流二手交易网站中全网比对，寻找同款或最具相似功能的同类“全新”商品真实零售指导价，以及全澳合理的二手均价。
-然后分析该挂牌价（$${price} AUD）是否值得购入，并按照以下要求反馈结构化结构：
-1. 给出判定结论 "verdict": 必须是 "划算"、"合理" 或 "偏贵" 中的某一个。
-2. 给出澳洲本地全新售价与商机来源 "newPrice" (例如：$49 AUD in Kmart)。
-3. 给出该折旧状况下的合理二手交易区间 "fairUsedPrice" (例如：$20 - $30 AUD)。
-4. 编写详细判定中文理由 "reasoning"：用富有同理心且真真戚戚的第一人称口吻，结合避坑防宰逻辑进行分析说明。
-5. 给出趣味痛感物价对比/时薪折算 "painConversion"：必须用澳洲当前法定最低薪资（约 $24 AUD/小时）换算出用户需要打工多少小时，相比高价外卖外送餐能省下多少，用活泼大白话警醒留学生不要被宰。
+请开启内置的 Google Search 全网检索，在澳洲当地主流实体大店（如 Kmart, IKEA, JB Hi-Fi, Apple Store, Target, Officeworks 等）及主流二手交易网站中全网比对，寻找同款或最具相似功能的同类“全新”商品真实零售指导价，以及全澳合理的二手均价。
 
-返回的 JSON 必须严格遵循格式，禁止输出任何 Markdown 表格或 \`\`\`json 标记。
+然后分析该买价（$${price} AUD）是否特别值得购入，并按照以下字段输出合法的 JSON：
+1. "verdict": 必须只能是 "划算"、"合理" 或 "偏贵" 中的某一个。
+2. "newPrice": 给出澳洲本地全新售价与商铺来源 (例如："$49 AUD in Kmart")。
+3. "fairUsedPrice": 给出该折旧状况下的合理二手售价区间 (例如："$20 - $30 AUD")。
+4. "reasoning": 编写详细判定中文理由。你必须用富有同理心的第一人称口吻，结合澳洲当地留学生活常识和避坑防宰提示。
+5. "painConversion": 给出趣味痛感物价对比或法定最低时薪折算（澳大利亚最低法定标准约 $24 AUD/小时）。换算出需要打工多少小时，警醒留学生不要被宰。
+
+【重要输出规范】你必须返回且仅返回一个合法的、可以直接被 JSON.parse 解析的 JSON 对象字符串。绝对不要输出任何 Markdown 表格、任何 markdown 格式代码块（严禁使用 \`\`\` 标记或 \`\`\`json 标记包裹），也不要包含任何额外的首尾对话和解释性废话。
 
 JSON 格式要求：
 {
   "verdict": "划算或合理或偏贵",
   "newPrice": "例如 $49 AUD in Kmart",
   "fairUsedPrice": "例如 $15 - $25 AUD",
-  "reasoning": "中文详细理由",
-  "painConversion": "趣味痛感时薪提示语"
+  "reasoning": "详细中文理由说明...",
+  "painConversion": "趣味痛感时薪提示语..."
 }`;
 
     const response = await generateWithRetry(aiClient, 'generateContent', {
       model: "gemini-3.5-flash",
       contents: prompt,
       config: {
-        tools: [{ googleSearch: {} }],
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            verdict: { type: Type.STRING, description: "必为：划算、合理、偏贵 之一" },
-            newPrice: { type: Type.STRING, description: "全新行情价格与来源" },
-            fairUsedPrice: { type: Type.STRING, description: "合理二手售价区间" },
-            reasoning: { type: Type.STRING, description: "详细中文分析理由，需体现反诈与避坑思维" },
-            painConversion: { type: Type.STRING, description: "结合法定最低时薪 $24 AUD/小时的痛感白话对比" }
-          },
-          required: ["verdict", "newPrice", "fairUsedPrice", "reasoning", "painConversion"]
-        }
+        tools: [{ googleSearch: {} }]
       }
     });
 
@@ -804,7 +793,8 @@ JSON 格式要求：
       throw new Error("Empty response from Gemini API");
     }
 
-    text = text.replace(/^```json\s*/, '').replace(/```\s*$/, '').trim();
+    // Cleanup potential markdown ticks if the model generates them
+    text = text.replace(/^```json\s*/i, '').replace(/^```\s*/, '').replace(/```\s*$/, '').trim();
     const result = JSON.parse(text);
     return res.json(result);
   } catch (error: any) {

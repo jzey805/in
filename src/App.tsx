@@ -68,8 +68,8 @@ export default function App() {
       {/* Top App Bar */}
       <header className="bg-white border-b border-gray-100 flex items-center justify-between px-6 py-4 shadow-sm z-20 sticky top-0 w-full">
         <h1 className="text-xl font-bold tracking-tight text-[#1C362B] flex items-center gap-2">
-          <span className="w-8 h-8 bg-[#EAB252] rounded-lg flex items-center justify-center text-white">S</span>
-          Serene
+          <span className="w-8 h-8 bg-[#EAB252] rounded-lg flex items-center justify-center text-white font-display">S</span>
+          Serene｜留学生海外避坑安心助手
         </h1>
         <div>
           {user ? (
