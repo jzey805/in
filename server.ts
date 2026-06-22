@@ -396,6 +396,162 @@ const GENERAL_SCAM_FALLBACK = {
   reassurance: "保持极度警惕，怀疑是对的。在海外遇到奇怪的强制汇款/遣返威胁电话，先别惊恐，直接和人商量，您不孤单，任何人都会对复杂的澳洲生活产生疑虑。"
 };
 
+function generateDynamicOfflineScamCheck(flags: string[], userText: string = ""): any {
+  const textLower = (userText || "").toLowerCase();
+
+  const flagDescriptions: { [key: string]: { why: string; todo: string; isFatal?: boolean } } = {
+    '对方要求你先转账/付押金/付定金': {
+      why: "⚠️ 对方催促转账：要求交付订金/转账是澳洲线上租房与二手交易骗局的终极特征，凡是不见面、不实地看房就找各种借口催款的，必属汇款骗局。",
+      todo: "坚决拒绝任何未经实地看房、未签署正式书面合同（如维州官方RTBA系统）的提前转账要求。坚持‘不见面、不给钥匙、绝对不转大钱’。"
+    },
+    '贵重物品却只让你付"运费/手续费/税费"': {
+      why: "⚠️ 极低售价+运费圈套：‘免费赠送/由于搬家低价赠送好物但仅收运费’是近期在海外高发的虚假投递骗手套路，诱导点击假链接付款绑定银行卡盗刷。",
+      todo: "切勿点击对方给的可逆第三方支付链接或不熟悉的物流小平台。任何需要提前输入多重验证码（OTP）缴费的均有银行卡被盗刷可能。"
+    },
+    '要求用礼品卡、加密货币或私下转账': {
+      why: "⚠️ 匿名支付：礼品卡（如 Apple Gift Card）、加密货币（BTC、USDT）和私下非担保汇款在澳洲属于不可逆、无金融保护的支付途径，失联后资金100%无法追回。",
+      todo: "建议终止和坚持此类交易。二手交易请首选本地现金面交，或使用带买家保障的正规支付网络。对异地房东只接受澳洲本地正规信托账户。"
+    },
+    '强调"只有这次机会""名额有限""今天不办就没了"': {
+      why: "⚠️ 营造稀缺假象：制造时间紧迫感是以欺诈为主导的套路中常见的‘促成手法’。骗子通过打乱留学生的时间安排，逼迫您处于应激状态下丧失理性思考力。",
+      todo: "对方催促越急，越不要当即做出任何金钱决定。给自己至少24小时冷却期，多和亲朋好友或学校专门的 Student Advisor 团队沟通商议。"
+    },
+    '催你立刻决定，不给你时间考虑': {
+      why: "⚠️ 施加生存焦虑：催促立刻决断是不法分子阻隔受害者求教于外界、打破骗局的最常用心理技巧。",
+      todo: "主动掐断当前的聊天或电话，保持理智并寻求第三方信誉渠道确认，不予理会任何倒计时威胁。"
+    },
+    '承诺"很好的机会""稳赚""高回报""轻松赚钱"': {
+      why: "⚠️ 高获利理财怪象：宣传‘高收益、保证赚钱’的承诺严重违逆澳洲理财市场规律。高薪网赚、代刷单兼职等，在后台均有人为操控，纯在为后期深度‘杀猪盘’铺铺垫。",
+      todo: "记住天下没有免费的午餐，澳洲不存在零门槛的高薪副业。任何涉及‘充值本金才能继续提现、做电商代刷’的玩法，百分百是诱导性骗局。"
+    },
+    '你听了感到很激动/心动': {
+      why: "⚠️ 情绪被刻意操控：骗子通常通过早期的一笔小额甜头返利，让受害人沉浸在狂喜情绪中，进而彻底瓦解防骗心理，甚至追加毕生生活费借款投资。",
+      todo: "理智降温。反复提醒自己，一旦到了要大笔转出本金以提现利益的层面，请立即及时收手并向警方和银行举报。"
+    },
+    '声称不需要专业知识技能就能赚钱': {
+      why: "⚠️ 轻松赚钱的糖衣炮弹：零技术高薪兼职不仅不符合澳洲市场用人常理，更有可能是在利用不知情的留学生洗黑钱（充当 Money Mule），导致您的澳洲签证被立即吊销。",
+      todo: "找兼职请严格遵守工作签证在澳规定，多通过 Seek, Indeed, LinkedIn 等主流正规本地招聘平台，杜绝任何可疑的高薪‘跑腿、打字、换汇’。"
+    },
+    '说"已经很多人买了/参加了""别人都赚到了"': {
+      why: "⚠️ 制造群体盲从：通过虚假的群聊消息、晒单截图来捏造多人参与的既视感，是投资理财骗局或者庞氏骗局的经典套路。",
+      todo: "绝不在群聊中跟风。对于自称理财大师、同学内部渠道包赚的社交群聊，建议立刻退出并拉黑对应发起人。"
+    },
+    '对方自称使馆/移民局/警方/海关/快递': {
+      why: "⚠️ 假冒大使馆公检法（致命红旗）：这是针对留学生最高危、涉案金额最大、危害程度最深的跨国双语电信诈骗集团常用手段。自称是大使馆、DHL、移民局在电讯里‘单线秘密办案’，并出示伪造的逮捕令、冻结款项文书或遣返告知书。",
+      todo: "⚠️ 绝对要立即挂断，拉黑对方！任何国家大使馆、中国公安、澳洲警方或移民局绝对不会通过电话、微信、WhatsApp‘秘密执法或要求转移资金配合查案’。直接拨打官方公示的使馆领保电话确认真实性。",
+      isFatal: true
+    },
+    '威胁你"不配合就遣返/被捕/罚款/签证出问题"': {
+      why: "⚠️ 强力施加心理威胁（致命红旗）：诈骗团伙利用留学生初来乍到对学校、签证规则与中国执法体系的不了解。任何涉及‘强制遣返回国、销户、立刻逮捕、罚款’的几乎都是网络诈骗话术。",
+      todo: "⚠️ 保持冷静，不要转账！如真有合法身份、签证或入境方面的疑虑，请直接联系您所就读大学对应的 International Student Support 提供权威协助，特级提醒真正的中澳警署都没有‘安全资金托管账户’模式。",
+      isFatal: true
+    },
+    '要求你保密，不许告诉家人、朋友或老师': {
+      why: "⚠️ 捏造强行隔离保密（致命红旗）：强制密办、不许商量旨在快速夺取您的心理支配权，让身边的理智声音无法介入。一旦你对亲人保密，欺诈集团就达到了切断外部社会支持网络的‘黑洞策略’。",
+      todo: "⚠️ 严词拒绝保密要求！马上告知您的家长、在澳舍友或授课老师。凡是强令切断和周围人求教沟通、让您独自保密的一定是骗局，声张后骗案便迎刃而解。",
+      isFatal: true
+    },
+    '索要银行卡号、验证码、密码、护照信息': {
+      why: "⚠️ 核心账户凭据勒索（致命红旗）：密码和6位短信OTP验证码是保障网银财产安全的最后护城河。不法分子利用护照页等隐私证照更是可以开设数字傀儡洗钱账户，令受骗留学生背上巨额国际信贷债务并触犯澳洲反洗钱刑罚。",
+      todo: "⚠️ 短信动态验证码绝对不要告诉任何人！如果误交，请于3分钟内迅速致电留学生澳洲本地银行卡反诈部门冻结流出，并联系 IDCARE 登记身份凭证信息盾守。",
+      isFatal: true
+    },
+    '要求屏幕共享或安装指定 App': {
+      why: "⚠️ 后门远程监控（致命红旗）：对方要求安装第三方会议 App（如 TeamViewer, Skype）并开启‘展示屏幕共享’。屏幕共享允许骗子实时抄录并克隆您网银的输入及弹出的账户动态验证码。",
+      todo: "⚠️ 坚决断开屏幕共享并拉黑！删除相关指示下载的任何陌生软件。若已操作操作，切莫耽误，立即登录真实本地银行 App 进行重设，并要求银行在后台拉黑对方可疑资金出口端口。",
+      isFatal: true
+    },
+    '仅凭一个网站/公众号/链接就让你相信对方正规': {
+      why: "⚠️ 低成本信任伪饰：仅凭伪造的网络页面或未经微信官方鉴定的宣传公众号就赋予对方极高的信任，是海外租房和中介欺诈的高频坑位。制作高度近似的公司界面或买号只需要非常低的成本。",
+      todo: "澳洲企业资质一律首选在 ABN Lookup 免费官方网站核验。若是租房或者办理留学，务必查看其是否拥有注册MARA认证或者是澳洲房产联合注册正规中介资质。"
+    },
+    '涉及"包治大病""养老高回报投资""保录取/包毕业"等': {
+      why: "⚠️ 违逆基本逻辑与校内守常：任何所谓无需实力百分百保毕业、特殊偏秘方大病投资包赚，均是抓住人们心理焦灼时刻实施定向诈骗的利诱圈套。",
+      todo: "对于学业或健康，务实走学校教授官方答疑、或澳洲正规医疗保险对应的 GP 公共诊所求医渠道，绝不相信走暗道或内推的灰色敛财手段。"
+    }
+  };
+
+  const activeWhy: string[] = [];
+  const activeTodo: string[] = [];
+  let isFatalChecked = false;
+  let normalCount = 0;
+
+  flags.forEach(flag => {
+    const desc = flagDescriptions[flag];
+    if (desc) {
+      activeWhy.push(desc.why);
+      activeTodo.push(desc.todo);
+      if (desc.isFatal) {
+        isFatalChecked = true;
+      } else {
+        normalCount++;
+      }
+    }
+  });
+
+  if (activeWhy.length === 0) {
+    if (textLower.includes("大使馆") || textLower.includes("中国使馆") || textLower.includes("使馆")) {
+      activeWhy.push("⚠️ 自称代表【大使馆/领事馆】：大使馆绝对不会通过自动拨号语音传达刑事协查办案，也不会安排‘转接国内公安专线’。这是跨国电信欺诈最爱扮演的角色。");
+      activeTodo.push("立刻掐断。千万不可依其所谓的‘指示挂断后再拨打其转接的第三方分机号码’，应直接通过中国领事服务网公开电话进行多方验证。");
+      isFatalChecked = true;
+    }
+    if (textLower.includes("警察") || textLower.includes("警方") || textLower.includes("公安") || textLower.includes("海关") || textLower.includes("扣留") || textLower.includes("逮捕")) {
+      activeWhy.push("⚠️ 声称【中国或澳洲警务人员办案】：说你国内银行卡涉嫌洗黑钱、发送虚假红头逮捕书。正常的执法单位绝对不在线上单线要求配合查账或秘密自保。");
+      activeTodo.push("不听不信其安排。可前往校区安全处寻求帮助或致电澳洲求救服务（非紧急 131 444）反馈。");
+      isFatalChecked = true;
+    }
+    if (textLower.includes("验证码") || textLower.includes("otp") || textLower.includes("验证码密") || textLower.includes("密码") || textLower.includes("护照")) {
+      activeWhy.push("⚠️ 直指【网银动态验证码/或卡片密码】：短信六位数验证码或个人护照原件扫描属极其重要的个人资产护航，骗子只要到手便能无阻地发起境外提款。");
+      activeTodo.push("短信密码绝对保密，没有任何正规平台会来向学生无理探听核验。如已不小心寄送，请紧急锁死名下有该澳洲卡的一切银行渠道。");
+      isFatalChecked = true;
+    }
+    if (textLower.includes("押金") || textLower.includes("租房") || textLower.includes("定金") || textLower.includes("房东")) {
+      activeWhy.push("⚠️ 要求支付【不看房只汇押金锁房】：澳洲租房凡是提出由于‘本人身在海外/由于个人病重’不能面对面接待，要学生寄钱款交保才能看房的，基本是骗局。");
+      activeTodo.push("不要因房源精美、价平就盲目给钱。澳洲正规租房流程对定金托管、首付有法定严格机构约束（如维州的 RTBA、新州的 BND）。坚持面交，否则直接放弃。");
+      normalCount += 2;
+    }
+  }
+
+  let riskLevel: 'red' | 'yellow' | 'green' = 'green';
+  let scamProbability = "";
+  let scamType = "⚠️ 澳洲留学生应急本地自检专家组报告";
+
+  if (isFatalChecked) {
+    riskLevel = 'red';
+    scamProbability = "风险判定：极高风险 90% 以上 (⚠️ 命中致命红旗特征，极其吻合针对在澳留学生的专业电信诈骗！)";
+    scamType = "⚠️ 高危警示：极度契合针对中国留学生的电信或网络恐吓骗局";
+  } else if (normalCount >= 4) {
+    riskLevel = 'red';
+    scamProbability = `风险判定：高风险约 ${normalCount * 15}% (⚠️ 命中多项欺诈红旗指标，请拒绝提供任何款项或在澳隐私证照。)`;
+    scamType = "⚠️ 高位排异：疑似多特征复合型线上安全欺骗套路";
+  } else if (normalCount >= 2) {
+    riskLevel = 'yellow';
+    scamProbability = `风险判定：中度嫌疑约 ${normalCount * 20}% (当前情境伴随着频繁的时间压迫、私下汇款引导，请多加防范防备。)`;
+    scamType = "⚠️ 预防升级：含有中高强度倾向的不当诱导交易";
+  } else {
+    riskLevel = 'green';
+    scamProbability = "风险判定：暂处于较安全参考水平 (无明显高危安全特征。海外生活复杂多变，请时刻坚持不轻易给动态验证码、不提前面交付款的双不原则。)";
+    scamType = "⚠️ 安全指引：暂未触及已知最高发的欺诈雷区形式";
+  }
+
+  if (activeWhy.length === 0) {
+    activeWhy.push("虽然暂时没有判定典型标志，请密切警醒任何自称大公司招聘先交保证金、同城急售多收高额预付物流费的无保机制交易。");
+  }
+  if (activeTodo.length === 0) {
+    activeTodo.push("立即终结可疑会话，多找大学学兄、或者是留学生安全专职组进行公开核实。");
+    activeTodo.push("向澳洲国家反诈机构 Scamwatch（电话 1300 333 000）或校内免费国际学生中心登记情况。");
+  }
+
+  return {
+    riskLevel,
+    scamProbability,
+    scamType,
+    whyDangerous: activeWhy,
+    whatToDo: activeTodo,
+    reassurance: "⚠️ 提醒：当前网络波动或 Gemini 接口配额原因导致实时查询不畅，本自检报告已自动激活并载入 Serene 离线精细防欺诈诊断规则。您对该行为产生的极高警觉不仅万分明智，更是海外自强自立的核心保障。求问别人、多方校验并不代表软弱，守护好您的信息安全、钱口袋和个人隐私才最重要！"
+  };
+}
+
 // ==========================================
 // UTILITY HELPERS FOR AI RESILIENCE
 // ==========================================
@@ -638,10 +794,11 @@ Output JSON (DO NOT WRAP IN MARKDOWN BLOCK, JUST RAW JSON):
 });
 
 app.post("/api/scam-check", upload.single("image"), async (req, res) => {
+  let flagsArray: string[] = [];
+  let scamText = "";
   try {
     const file = req.file;
-    const { scamText } = req.body;
-    let flagsArray: string[] = [];
+    scamText = req.body.scamText || "";
     if (req.body.flags) {
       try {
         flagsArray = typeof req.body.flags === 'string' ? JSON.parse(req.body.flags) : req.body.flags;
@@ -718,7 +875,8 @@ Expected JSON format:
     return res.json(result);
   } catch (error: any) {
     console.error("Gemini scamcheck analysis failed, activating fallback:", error?.message || error);
-    return res.json(GENERAL_SCAM_FALLBACK);
+    const dynamicFallback = generateDynamicOfflineScamCheck(flagsArray, scamText);
+    return res.json(dynamicFallback);
   }
 });
 
