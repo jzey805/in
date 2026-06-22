@@ -365,8 +365,8 @@ Yours faithfully,
 
 const GENERAL_SHIELD_FALLBACK = {
   riskLevel: "yellow",
-  title: "【配额备载】防诈避坑通用扫描报告",
-  summary: "由于当前系统 API 限流额度，防坑安全盾已自动启用本地离线安全专家防御建议。以下是针对留学生高频踩雷的欺诈/租房/转二手交易避坑指南，请对照您的真实案例自查：",
+  title: "⚠️ 当前离线参考：防诈避坑通用扫描报告",
+  summary: "⚠️ 当前因网络配额限制无法联网实时分析，已自动启用本地离线安全防御建议。以下是针对留学生高频踩雷的欺诈、不实房源、虚高二手价格等常见防坑防骗重点常识，请对照您的案例自查：",
   redFlags: [
     "看房受阻雷区：凡是房东声称‘本人在海外/英国/外地’无法带您看房，却要求交钱锁房/邮寄钥匙的，均为100%骗局。",
     "特异付款方式：要求用西联汇款、不可回滚的第三方礼品卡序列号、非本土跨国转账，极度危险。",
@@ -378,6 +378,22 @@ const GENERAL_SHIELD_FALLBACK = {
     rmbEquivalent: "请注意比对澳洲当地实体巨头（如 Kmart, IKEA, JB Hi-Fi）全新商品的现价",
     wittyComparison: "澳洲防诈核心准则：不付不明定金、不见面不给钱。如需购买日常用品，移步 Kmart 全新件通常性价比极高且自带全面售后保修，买二手提货路费高，千万别让钱包受委屈！"
   }
+};
+
+const GENERAL_SCAM_FALLBACK = {
+  riskLevel: "yellow",
+  scamProbability: "⚠️ 当前由于限流限额临时无法为您提供实时的 AI 智能研判。根据勾选情况，建议警惕其为潜在套路骗局，风险估测约 40% - 85% 之间",
+  scamType: "⚠️ 离线反诈安全自检索防线",
+  whyDangerous: [
+    "若涉及‘自称使馆、警方、移民局或要求保密’：那是极其高危的经典‘虚拟绑架/假冒公检法’双语电信恐吓。任何国家的正常执法机关都绝对不会以电话、社交软件为主联系或单线要求保密转账。",
+    "若涉及‘礼品卡、充值、私下付租房定金面交运费’：澳洲二手或租房骗局多利用无追回手段的第三方途径转移钱财，一旦汇出无法追索和阻截。"
+  ],
+  whatToDo: [
+    "立即掐断联系，绝不转钱不给验证码：切勿提供护照照片、银行六位数 OTP 动态验证码或账户密码。",
+    "主张当面核实：若涉及实体交货或租房，坚持在人流密集的公众场合或警察局旁见面检查无误再付款。",
+    "告知身边长辈同学：打消任何‘必须保密’的要求，积极向身边的同学、老学长或校内的留学生指导中心（Student Advisor）核实。"
+  ],
+  reassurance: "保持极度警惕，怀疑是对的。在海外遇到奇怪的强制汇款/遣返威胁电话，先别惊恐，直接和人商量，您不孤单，任何人都会对复杂的澳洲生活产生疑虑。"
 };
 
 // ==========================================
@@ -554,32 +570,13 @@ Please analyze the image and output a JSON response matching this schema (DO NOT
 app.post("/api/analyze-shield", upload.single("image"), async (req, res) => {
   try {
     const file = req.file;
-    const { textInfo, activeCase } = req.body;
+    const { textInfo } = req.body;
 
     if (!file && !textInfo) {
       return res.status(400).json({ error: "No input provided" });
     }
 
-    // 1. Check for preset originalname or text description keywords to route instantly and preserve API quota
-    const originalName = (file?.originalname || "").toLowerCase();
-    const textDesc = (textInfo || "").toLowerCase();
-    const clientActiveCase = (activeCase || "").toLowerCase();
-    let matchedPresetKey = "";
-
-    if (clientActiveCase) {
-      matchedPresetKey = clientActiveCase;
-    } else if (originalName.includes("rent") || textDesc.includes("rent") || textDesc.includes("租房") || textDesc.includes("房东")) {
-      matchedPresetKey = "rent";
-    } else if (originalName.includes("item") || textDesc.includes("item") || textDesc.includes("炉") || textDesc.includes("微波炉") || textDesc.includes("marketplace")) {
-      matchedPresetKey = "item";
-    }
-
-    if (matchedPresetKey && PRESET_SHIELD_ANALYSES[matchedPresetKey]) {
-      console.log(`[API] Serving high-fidelity cached preset for shield: ${matchedPresetKey}`);
-      return res.json(PRESET_SHIELD_ANALYSES[matchedPresetKey]);
-    }
-
-    // 2. Otherwise consult Gemini API
+    // Consult Gemini API directly
     const aiClient = getAI();
     
     const prompt = `You are a scam prevention and price checking assistant for Chinese overseas students in Australia.
@@ -637,6 +634,91 @@ Output JSON (DO NOT WRAP IN MARKDOWN BLOCK, JUST RAW JSON):
   } catch (error: any) {
     console.warn("Gemini shield analysis failed, activating robust fallback:", error?.message || error);
     return res.json(GENERAL_SHIELD_FALLBACK);
+  }
+});
+
+app.post("/api/scam-check", upload.single("image"), async (req, res) => {
+  try {
+    const file = req.file;
+    const { scamText } = req.body;
+    let flagsArray: string[] = [];
+    if (req.body.flags) {
+      try {
+        flagsArray = typeof req.body.flags === 'string' ? JSON.parse(req.body.flags) : req.body.flags;
+        if (!Array.isArray(flagsArray)) {
+          flagsArray = [String(flagsArray)];
+        }
+      } catch (e) {
+        flagsArray = typeof req.body.flags === 'string' ? [req.body.flags] : [];
+      }
+    }
+
+    const aiClient = getAI();
+
+    const prompt = `You are an expert scam detection and safety assistant for Chinese overseas students in Australia.
+The user is performing a "Scam Self-Check" (反诈自检) by reporting a set of suspicious flags. They might also provide conversation text or attach a screenshot/image.
+
+Here is the context provided by the user:
+- User Checked Flags:
+${flagsArray.map(f => `- ${f}`).join("\n") || "No flags selected."}
+
+- Suspicious text or message content:
+"${scamText || "None provided"}"
+
+Guidelines:
+1. "致命红旗" (FATAL Red Flags) are any flags belonging to "冒充权威/恐吓" (Impersonating authority/Threats, e.g., claiming to be embassy, police, immigration, courier; threats of deportation/arrest; demands for secrecy) and "索取敏感信息" (Sensitive Info, e.g., bank card/OTP/password, remote screen share). If any of these are checked OR indicated in the user's text or screenshot, set "riskLevel" strictly to "red" (High Risk).
+2. Otherwise, calculate the risk based on normal flags:
+   - If 0-1 normal flags are checked and no fatal signs: "green" (Low Risk).
+   - If 2-4 normal flags are checked: "yellow" (Medium Risk).
+   - If 5+ normal flags are checked: "red" (High Risk).
+3. Do NOT invent fake precision numbers. For scamProbability, provide a well-reasoned percent assessment in Chinese (e.g., "约 90% 概率为诈骗: 命中'包含威胁遣返'与'索要短信验证码'等2个致命红旗" or "约 60% 概率为诈骗: 命中多个高息返利及催促转账特征").
+4. Call Google Search (integrated tool) to query scamwatch.gov.au/ATO/Victoria Police for any recent scams matching this pattern (e.g. "student-targeting scams", "Chinese embassy post scams", "fake rent bond scams") to ground your response, and describe any matching real-world scam in "scamType".
+5. Return JSON only. Do NOT wrap the JSON in markdown code blocks. DO NOT use responseSchema or responseMimeType as they conflict with the Google Search tool. Instead, return a raw JSON string that can be parsed directly.
+
+Expected JSON format:
+{
+  "riskLevel": "red" | "yellow" | "green",
+  "scamProbability": "百分比风险评价与核心依据",
+  "scamType": "识别出的具体诈骗类型名字 (如: '假冒快递包裹海关诈骗')",
+  "whyDangerous": ["解释1", "解释2"],
+  "whatToDo": ["具体实用建议1 (如: 立即挂断，拉黑对方账号)", "具体实用建议2 (如果是租房纠纷，坚持现场交付或查看RTBA官方回执)", "建议3: 拨打澳洲本地Scamwatch电话核实（1300 333 000）或报警"],
+  "reassurance": "一句暖心安抚的话，告诉留学生不轻易转账转密码的警觉是非常明智的，求证并不丢脸。"
+}`;
+
+    const parts: any[] = [{ text: prompt }];
+    if (scamText) {
+      parts.push({ text: `User text message: ${scamText}` });
+    }
+    if (file) {
+      parts.push({
+        inlineData: {
+          data: file.buffer.toString("base64"),
+          mimeType: file.mimetype,
+        },
+      });
+    }
+
+    const response = await generateWithRetry(aiClient, 'generateContent', {
+      model: "gemini-3.5-flash",
+      contents: [{ role: "user", parts }],
+      config: {
+        tools: [{ googleSearch: {} }]
+      }
+    }) as any;
+
+    let text = response.text;
+    if (!text) {
+      throw new Error("Empty response from AI");
+    }
+
+    // Strip markdown code block if present
+    text = text.replace(/^```json\s*/i, '').replace(/^```\s*/, '').replace(/```\s*$/, '').trim();
+
+    const result = JSON.parse(text);
+    return res.json(result);
+  } catch (error: any) {
+    console.error("Gemini scamcheck analysis failed, activating fallback:", error?.message || error);
+    return res.json(GENERAL_SCAM_FALLBACK);
   }
 });
 
