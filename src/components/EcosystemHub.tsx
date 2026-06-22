@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { 
   Compass, User, Users, Map, Utensils, ShoppingBag, ArrowRight, Zap, 
   Image as ImageIcon, DollarSign, MessageSquare, Plus, Check, Star, 
-  Shield, Lock, MapPin, Search, ChevronRight, X, AlertCircle, ShoppingCart, Trash2
+  Shield, Lock, MapPin, Search, ChevronRight, X, AlertCircle, ShoppingCart, Trash2, Upload
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -328,6 +328,212 @@ export default function EcosystemHub() {
   const [itemSuburb, setItemSuburb] = useState('');
   const [itemDesc, setItemDesc] = useState('');
 
+  // --- Ecosystem AI States ---
+
+  // 二手估价 (Marketplace Price Checks)
+  const [priceCheckResults, setPriceCheckResults] = useState<Record<string, {
+    verdict: '划算' | '合理' | '偏贵';
+    newPrice: string;
+    fairUsedPrice: string;
+    reasoning: string;
+    painConversion: string;
+    loading?: boolean;
+  }>>({});
+
+  // 瞬时处境匹配 (Companion Instant Matching)
+  const [situationQuery, setSituationQuery] = useState('');
+  const [companionMatchLoading, setCompanionMatchLoading] = useState(false);
+  const [matchedGuideIds, setMatchedGuideIds] = useState<string[]>([]);
+  const [matchReason, setMatchReason] = useState<string | null>(null);
+  const [matchChecklist, setMatchChecklist] = useState<string[]>([]);
+
+  // 临期食材/小票菜谱 (Kitchen Budget Recipe)
+  const [recipePreview, setRecipePreview] = useState<string | null>(null);
+  const [recipeLoading, setRecipeLoading] = useState(false);
+  const [recipeResult, setRecipeResult] = useState<{
+    ingredients: string[];
+    recipes: { name: string; steps: string[]; cost: string }[];
+    savingComparison: string;
+  } | null>(null);
+
+  // --- Ecosystem AI Handlers ---
+
+  // 1. 二手一键 AI 验价
+  const handlePriceCheck = async (itemId: string, title: string, description: string, price: number) => {
+    setPriceCheckResults(prev => ({
+      ...prev,
+      [itemId]: { ...(prev[itemId] || {}), loading: true } as any
+    }));
+
+    try {
+      const res = await fetch('/api/check-price', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title, description, price })
+      });
+      if (!res.ok) throw new Error('Failed to fetch valuation');
+      const data = await res.json();
+      setPriceCheckResults(prev => ({
+        ...prev,
+        [itemId]: { ...data, loading: false }
+      }));
+      triggerNotification(`💡 [${title}] AI 一键全网估价评级为「${data.verdict}」！`);
+    } catch (err) {
+      console.error(err);
+      triggerNotification('❌ AI 验价限流，已为您自动切换至全澳离线估价防御！');
+      setPriceCheckResults(prev => ({
+        ...prev,
+        [itemId]: {
+          verdict: '合理',
+          newPrice: '$45 AUD in Kmart / Target 类似款',
+          fairUsedPrice: '$15 - $25 AUD',
+          reasoning: '【AI 避坑盾温馨提示】由于系统配额受限，为您调出澳洲常规物价估判：澳洲Kmart、IKEA或Target的全新基础用品不仅高频保修且极为便宜。除非该二手保存非常完好，否则不宜虚高购买。推荐在面交中启用 Serene 的双向押金中介支付！',
+          painConversion: '折合澳洲最低时薪工作 1-1.5 小时。比起叫外包天价外卖配送，自取二手仍然保本，但必须谨防付前诈骗。',
+          loading: false
+        }
+      }));
+    }
+  };
+
+  // 2. 瞬时处境 matching
+  const handleCompanionMatch = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!situationQuery.trim()) {
+      triggerNotification('✍️ 请先输入你当前遇到的迷茫、棘手处境或困难！');
+      return;
+    }
+    setCompanionMatchLoading(true);
+    setMatchedGuideIds([]);
+    setMatchReason(null);
+    setMatchChecklist([]);
+
+    try {
+      const res = await fetch('/api/match-companion', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          description: situationQuery,
+          companions: guides.map(g => ({
+            id: g.id,
+            name: g.name,
+            university: g.university,
+            major: g.major,
+            suburb: g.suburb,
+            bio: g.bio,
+            projects: g.projects
+          }))
+        })
+      });
+
+      if (!res.ok) throw new Error('Failed to match companion');
+      const data = await res.json();
+      setMatchedGuideIds(data.matchedGuideIds || []);
+      setMatchReason(data.reason || '');
+      setMatchChecklist(data.checklist || []);
+      
+      // Select the first matched guide automatically to focus details and guide student better!
+      if (data.matchedGuideIds && data.matchedGuideIds.length > 0) {
+        const found = guides.find(g => g.id === data.matchedGuideIds[0]);
+        if (found) {
+          setSelectedGuide(found);
+          setSelectedItem(null);
+          setSelectedMeal(null);
+        }
+      }
+      
+      triggerNotification('✨ AI 瞬时经验学长姐挑选成功！详细防坑避雷卡已发到右侧！');
+    } catch (err) {
+      console.error(err);
+      triggerNotification('❌ 配额繁忙，已自动为您唤醒全澳求生避坑盾卡！');
+      setMatchedGuideIds(['g-1']);
+      setMatchReason('【向导匹配预载成功】由于系统网络配置繁忙，安全向导 Alex (林学长) 正在代表守护。他拥有三年以上的墨尔本本地生活经验，精通三大件开办、租房避坑和日常反诈流程。');
+      setMatchChecklist([
+        "不实地看房、不签字拿钥匙并向RTBA确认房保押金前，坚决不要给私人转任何订金！",
+        "澳洲主流银行开户或超值手机卡、交通卡都是全自动在正规官方网站免费办理的，千万别交由第三方高价代开，防身份泄露！",
+        "凡是收到带有‘DHL快递包裹扣押’、‘大使馆通知涉嫌国内大案’、‘澳洲ATO税收稽查通知’的中文恐吓，100%是海外专门针对新生的电信诈骗！直接挂断电话！"
+      ]);
+      const found = guides.find(g => g.id === 'g-1');
+      if (found) {
+        setSelectedGuide(found);
+        setSelectedItem(null);
+        setSelectedMeal(null);
+      }
+    } finally {
+      setCompanionMatchLoading(false);
+    }
+  };
+
+  // 3. 冰箱食材/超市买菜收据小票省钱食谱 AI 魔法
+  const handleRecipeSubmit = async (file: File) => {
+    setRecipeLoading(true);
+    setRecipeResult(null);
+
+    try {
+      const formData = new FormData();
+      formData.append('image', file);
+
+      const res = await fetch('/api/budget-recipe', {
+        method: 'POST',
+        body: formData
+      });
+      if (!res.ok) throw new Error('Failed to make budget recipe');
+      const data = await res.json();
+      setRecipeResult(data);
+      triggerNotification('🥦 AI 冰箱魔术菜谱和算账账单已解锁！大吉大省！');
+    } catch (err) {
+      console.error(err);
+      triggerNotification('❌ 图像解析超时，已帮您调出经典自制营养省钱菜谱。');
+      setRecipeResult({
+        ingredients: ["土豆 (Potatoes)", "鸡蛋 (Eggs)", "西红柿 (Tomatoes)", "吐司/挂面"],
+        recipes: [
+          {
+            name: "超省钱留学生双料土豆丝蛋炒饭 (Student Deluxe Potato Stir-fry Rice)",
+            steps: [
+              "将土豆刨成细丝沥干，鸡蛋打散备用。",
+              "热锅下油，倒入蛋液炒散捞出；保持明火下土豆丝大热猛炒2分钟。",
+              "倒入一盘剩米饭和刚捞出的熟蛋花，大火快速颠锅，撒入少许生抽和盐，翻炒至金黄，撒上葱花即可美味出炉。"
+            ],
+            cost: "$3.50 AUD"
+          },
+          {
+            name: "一锅端西红柿鸡蛋焖面 (One-Pot Tomato Egg Stew Noodles)",
+            steps: [
+              "西红柿切丁，葱蒜爆香下锅炒成豆沙沙状出汤汁。",
+              "加入温水大火煮开，打入两个散蛋花或荷包蛋。",
+              "铺入超市购入的 $1 AUD 基础线面，关小火焖熟8慢火，让面条彻底吸饱浓醇西红柿蛋汁。"
+            ],
+            cost: "$4.00 AUD"
+          }
+        ],
+        savingComparison: "【大厨守望启示】如果在墨尔本叫一份相似的外卖，外卖单体加高额配送服务费轻易突破 $28 AUD！自己在家花 10 分钟整一份，成本只需 $3.5 AUD。一餐瞬间省下 $24.5 AUD！这折合打最低时薪工整整 1 小时。少点外卖，健康又省力！"
+      });
+    } finally {
+      setRecipeLoading(false);
+    }
+  };
+
+  const handleRecipeImgPreset = async (presetType: 'fridge' | 'receipt') => {
+    setRecipeLoading(true);
+    setRecipeResult(null);
+    try {
+      let imageUrl = 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&q=80&w=300'; // preset veggies
+      if (presetType === 'receipt') {
+        imageUrl = 'https://images.unsplash.com/photo-1554415707-6e8cfc93fe23?auto=format&fit=crop&q=80&w=300'; // preset supermarket checkout
+      }
+      setRecipePreview(imageUrl);
+
+      const responseImg = await fetch(imageUrl);
+      const blob = await responseImg.blob();
+      const mockFile = new File([blob], `${presetType === 'fridge' ? 'fridge_ingredients' : 'grocery_receipt'}.jpg`, { type: 'image/jpeg' });
+
+      await handleRecipeSubmit(mockFile);
+    } catch (err) {
+      console.error(err);
+      triggerNotification('❌ 预置图像拉取失败');
+      setRecipeLoading(false);
+    }
+  };
+
   // Notifications
   const [notification, setNotification] = useState<string | null>(null);
 
@@ -612,6 +818,53 @@ export default function EcosystemHub() {
                     />
                   </div>
 
+                  {/* AI Situation Matching Workspace */}
+                  <div className="bg-gradient-to-br from-[#1C362B]/5 via-white to-amber-50/10 border border-gray-200/80 rounded-3xl p-5 shadow-xs relative overflow-hidden">
+                    <div className="absolute top-0 right-0 w-32 h-32 bg-amber-100/20 rounded-full blur-2xl pointer-events-none"></div>
+                    <div className="flex items-start gap-3 mb-3">
+                      <div className="p-2 bg-[#1C362B] text-white rounded-xl shadow-xs">
+                        <Zap size={18} />
+                      </div>
+                      <div>
+                        <h3 className="text-sm font-black text-gray-900 flex items-center gap-1.5 animate-pulse">
+                          <span>✨ AI 瞬时避坑向导智能匹配</span>
+                          <span className="text-[10px] bg-amber-100 text-amber-800 font-bold px-1.5 py-0.2 rounded">新生防坑仪</span>
+                        </h3>
+                        <p className="text-[10px] text-gray-500 mt-0.5 leading-relaxed">
+                          遇到留学落地困难、租房验证、第一学期挂科、被不良华人私下二手微信群威胁？用一句话写出你的处境，AI 帮你配对最具对症经验的带教志愿者学长姐，并当堂定制行动排雷卡。
+                        </p>
+                      </div>
+                    </div>
+
+                    <form onSubmit={handleCompanionMatch} className="space-y-3">
+                      <textarea
+                        rows={2}
+                        value={situationQuery}
+                        onChange={e => setSituationQuery(e.target.value)}
+                        placeholder="例如：刚入座Clayton看房极其担心碰见黑二手房东、或收到Show Cause信手足无措面临听证会..."
+                        className="w-full bg-white border border-gray-200 rounded-2xl p-3 text-xs font-medium focus:outline-none focus:ring-1 focus:ring-[#1C362B]/55 focus:border-[#1C362B]/60 placeholder-gray-400 leading-relaxed shadow-xs"
+                      />
+                      <div className="flex items-center justify-between">
+                        <span className="text-[9px] text-gray-400 font-bold flex items-center gap-1">
+                          <Shield size={11} className="text-emerald-700" />
+                          <span>学长向导非中介，均为真实留学生防雷经验志愿传递者</span>
+                        </span>
+                        <button
+                          type="submit"
+                          disabled={companionMatchLoading}
+                          className="px-4 py-2 bg-[#1C362B] hover:bg-neutral-800 text-white rounded-xl text-xs font-black tracking-wide transition-all shadow-md flex items-center gap-1.5 disabled:opacity-50 cursor-pointer"
+                        >
+                          {companionMatchLoading ? (
+                            <span className="inline-block w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
+                          ) : (
+                            <Zap size={11} fill="currentColor" />
+                          )}
+                          <span>{companionMatchLoading ? '正在分析处境...' : 'AI 瞬时匹配学长姐'}</span>
+                        </button>
+                      </div>
+                    </form>
+                  </div>
+
                   {filteredGuides.length === 0 ? (
                     <div className="bg-white border text-center p-12 rounded-3xl text-gray-400">
                       没有找到匹配的本地带逛学长姐，尝试缩短关键词。
@@ -622,16 +875,21 @@ export default function EcosystemHub() {
                         <div 
                           key={g.id} 
                           onClick={() => setSelectedGuide(g)}
-                          className={`bg-white border rounded-3xl p-5 hover:border-[#1C362B]/30 hover:scale-101 shadow-xs transition-all cursor-pointer flex flex-col justify-between ${selectedGuide?.id === g.id ? 'ring-2 ring-[#1C362B] border-transparent' : 'border-gray-150'}`}
+                          className={`bg-white border rounded-3xl p-5 hover:border-[#1C362B]/30 hover:scale-101 shadow-xs transition-all cursor-pointer flex flex-col justify-between ${selectedGuide?.id === g.id ? 'ring-2 ring-[#1C362B] border-transparent' : 'border-gray-150'} ${matchedGuideIds.includes(g.id) ? 'ring-2 ring-amber-400 shadow-[0_0_15px_rgba(234,178,82,0.22)] border-transparent' : ''}`}
                         >
                           <div>
                             <div className="flex items-start justify-between">
                               <div className="flex items-center space-x-3">
                                 <img src={g.avatar} alt="avatar" className="w-12 h-12 rounded-2xl object-cover border" />
                                 <div>
-                                  <h4 className="font-black text-gray-950 flex items-center gap-1.5">
-                                    {g.name}
-                                    {g.isCustom && <span className="bg-emerald-100 text-emerald-800 text-[9px] font-black px-1 py-0.2 rounded">我</span>}
+                                  <h4 className="font-black text-gray-950 flex flex-wrap items-center gap-1">
+                                    <span>{g.name}</span>
+                                    {matchedGuideIds.includes(g.id) && (
+                                      <span className="bg-amber-100 text-amber-900 border border-amber-300 text-[8px] font-black px-1.5 py-0.2 rounded-full leading-none shrink-0">
+                                        ✨ AI 精选经验源
+                                      </span>
+                                    )}
+                                    {g.isCustom && <span className="bg-emerald-100 text-emerald-800 text-[9px] font-black px-1 py-0.2 rounded shrink-0">我</span>}
                                   </h4>
                                   <p className="text-[10px] text-gray-400 font-bold tracking-tight">{g.university} · {g.major}</p>
                                 </div>
@@ -869,6 +1127,126 @@ export default function EcosystemHub() {
                       onChange={e => setChefQuery(e.target.value)}
                       className="w-full bg-white border border-gray-200 rounded-3xl py-3.5 pl-12 pr-4 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-[#1C362B]/50 transition-shadow shadow-xs"
                     />
+                  </div>
+
+                  {/* AI Budget Meal Assistant Block */}
+                  <div className="bg-gradient-to-br from-[#1C362B]/5 via-white to-[#EAB252]/5 border border-gray-200/85 rounded-3xl p-5 shadow-xs relative overflow-hidden space-y-4">
+                    <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-100/10 rounded-full blur-2xl pointer-events-none"></div>
+                    <div className="flex items-start gap-3">
+                      <div className="p-2 bg-[#1C362B] text-white rounded-xl shadow-xs">
+                        <Utensils size={18} />
+                      </div>
+                      <div>
+                        <h3 className="text-sm font-black text-gray-900 flex items-center gap-1.5 leading-none">
+                          <span>🥦 AI 冰箱临期食材 & 超市小票省钱自救菜谱</span>
+                          <span className="text-[10px] bg-emerald-100 text-emerald-800 font-extrabold px-1.5 py-0.2 rounded animate-pulse">外卖终结者</span>
+                        </h3>
+                        <p className="text-[10px] text-gray-500 mt-1.5 leading-relaxed">
+                          叫一顿 $30+ AUD 的送餐外卖是不是掏空了每周的生活开销？上传冰箱杂乱随拍，或 Woolworths / Coles 实拍买菜小票小图。Serene 将比照全澳平价库，瞬时为你定制最低成本极简营养快手食谱，并展开防坑账单痛感换算！
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {/* Image Upload Area */}
+                      <div className="space-y-3">
+                        <div className="border border-dashed border-gray-250 rounded-2xl p-4 text-center bg-gray-50/50 hover:bg-white transition-all hover:border-[#1C362B]/30 flex flex-col justify-center items-center h-32 relative">
+                          <input
+                            type="file"
+                            accept="image/*"
+                            onChange={(e) => {
+                              const file = e.target.files?.[0];
+                              if (file) handleRecipeSubmit(file);
+                            }}
+                            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                          />
+                          <Upload className="mx-auto text-[#1C362B] mb-2" size={24} />
+                          <span className="text-[11px] font-bold text-gray-800 block">点击或拖拽上传冰箱一角 / 买菜小票</span>
+                          <span className="text-[9px] text-gray-400 mt-1 block">支持图像上传进行真实的 AI 大屏扫描</span>
+                        </div>
+
+                        {/* Quick Preset Buttons */}
+                        <div className="flex items-center gap-2 font-sans">
+                          <span className="text-[9px] text-gray-400 font-black shrink-0">体验预载样例：</span>
+                          <button
+                            type="button"
+                            onClick={() => handleRecipeImgPreset('fridge')}
+                            className="px-2.5 py-1 text-[10px] font-black bg-emerald-50 hover:bg-emerald-100 active:scale-95 text-emerald-800 border border-emerald-200 rounded-lg transition-all cursor-pointer flex items-center gap-0.5"
+                          >
+                            🥦 预置临期食材
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleRecipeImgPreset('receipt')}
+                            className="px-2.5 py-1 text-[10px] font-black bg-amber-50 hover:bg-amber-100 active:scale-95 text-amber-800 border border-amber-200 rounded-lg transition-all cursor-pointer flex items-center gap-0.5"
+                          >
+                            🧾 预置超市购物小票
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Loading block or Preview Report */}
+                      <div className="bg-white/90 border border-gray-150 rounded-2xl p-3.5 flex flex-col justify-center min-h-[140px] relative font-sans">
+                        {recipeLoading ? (
+                          <div className="space-y-3 text-center my-auto animate-pulse">
+                            <div className="inline-block w-8 h-8 border-4 border-[#1C362B] border-t-transparent rounded-full animate-spin"></div>
+                            <div className="space-y-1">
+                              <span className="text-xs font-black text-gray-900 block">Serene AI 正在扫描冰箱及比照全澳物价...</span>
+                              <span className="text-[9px] text-gray-450 block">Woolworths & Coles 最新低价策略比对计算中</span>
+                            </div>
+                          </div>
+                        ) : recipeResult ? (
+                          <div className="space-y-3 h-full overflow-y-auto max-h-[160px] text-xs leading-relaxed text-gray-700 pr-1 select-none font-semibold">
+                            <div>
+                              <span className="text-[9px] text-gray-400 font-extrabold uppercase block">🥗 智能雷达扫描识别食材 (Ingredients):</span>
+                              <div className="flex flex-wrap gap-1 mt-1">
+                                {recipeResult.ingredients.map((ing, iIdx) => (
+                                  <span key={iIdx} className="bg-emerald-100 text-emerald-800 border border-emerald-200 text-[10px] font-black px-1.5 py-0.5 rounded-lg leading-none">
+                                    {ing}
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+
+                            <div className="border-t border-dashed border-gray-150 pt-2 space-y-2">
+                              <span className="text-[9px] text-gray-400 font-extrabold uppercase block">🍳 AI 定制省钱自救菜谱 (Recipes):</span>
+                              {recipeResult.recipes.map((rep, rIdx) => (
+                                <div key={rIdx} className="bg-gray-50 p-2.5 rounded-xl border border-gray-150 space-y-1">
+                                  <div className="flex justify-between items-center text-[11px] font-black">
+                                    <span className="text-gray-950 font-black">{rIdx + 1}. {rep.name}</span>
+                                    <span className="text-emerald-800 bg-emerald-100 font-mono px-1 py-0.2 rounded shrink-0">预估成本 {rep.cost}</span>
+                                  </div>
+                                  <ul className="list-decimal pl-3.5 text-[10px] font-bold text-gray-600 space-y-0.5">
+                                    {rep.steps.map((st, sIdx) => <li key={sIdx}>{st}</li>)}
+                                  </ul>
+                                </div>
+                              ))}
+                            </div>
+
+                            <div className="border-t border-dashed border-gray-150 pt-2 bg-[#EAB252]/10 p-2.5 rounded-xl border border-[#EAB252]/20">
+                              <span className="text-[9.5px] text-[#EAB252] font-black uppercase flex items-center gap-0.5 leading-none">
+                                🛡️ 留学生自救平价防坑账单 (Woolies / Coles 比照):
+                              </span>
+                              <p className="text-[10px] text-[#1C362B] font-bold leading-relaxed mt-1.5">
+                                {recipeResult.savingComparison}
+                              </p>
+                            </div>
+                          </div>
+                        ) : recipePreview ? (
+                          <div className="relative w-full h-full min-h-[120px] rounded-xl overflow-hidden border border-gray-100 bg-gray-50">
+                            <img src={recipePreview} alt="upload preview" className="w-full h-full object-cover" />
+                            <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
+                              <span className="text-white text-[10px] font-black">已预载样例：点击下方按钮分析</span>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="text-center py-6 text-gray-400 text-xs my-auto">
+                            <Utensils className="mx-auto mb-1.5 opacity-30 animate-pulse text-neutral-400" size={24} />
+                            <span>上传图片或点击预载样例，即可触发 AI 生鲜/小票算术。</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
                   </div>
 
                   {/* HIGH QUALITY STYLISH CSS INTERACTIVE LOCAL MAP SIMULATOR */}
@@ -1260,7 +1638,38 @@ export default function EcosystemHub() {
                               <MapPin size={11} />
                               {item.suburb}
                             </span>
-                            <div className="flex items-center space-x-1.5">
+                            <div className="flex items-center space-x-1.5 font-sans">
+                              {/* AI Price Check Button */}
+                              <button
+                                type="button"
+                                disabled={priceCheckResults[item.id]?.loading}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setSelectedItem(item);
+                                  handlePriceCheck(item.id, item.title, item.description, item.price);
+                                }}
+                                className={`px-2 py-1 rounded-xl text-[10px] font-black cursor-pointer flex items-center gap-0.5 transition-all ${
+                                  priceCheckResults[item.id]
+                                    ? priceCheckResults[item.id].verdict === '划算'
+                                      ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                                      : priceCheckResults[item.id].verdict === '偏贵'
+                                      ? 'bg-red-100 text-red-800 border border-red-300'
+                                      : 'bg-amber-100 text-amber-800 border border-amber-300 animate-pulse'
+                                    : 'bg-amber-50 hover:bg-amber-100/80 active:scale-95 text-amber-700 border border-amber-200'
+                                }`}
+                              >
+                                {priceCheckResults[item.id]?.loading ? (
+                                  <span className="w-3 h-3 border-2 border-amber-700 border-t-transparent rounded-full animate-spin"></span>
+                                ) : (
+                                  '💡'
+                                )}
+                                <span>
+                                  {priceCheckResults[item.id]
+                                    ? `AI:${priceCheckResults[item.id].verdict}`
+                                    : 'AI验价'}
+                                </span>
+                              </button>
+
                               {item.secureStatus === 'available' ? (
                                 <button
                                   type="button"
@@ -1431,6 +1840,35 @@ export default function EcosystemHub() {
                   </div>
                 </div>
 
+                {/* AI SPECIFIC PREVENTATIVE SCAM PROTECTION CARD */}
+                {matchChecklist && matchChecklist.length > 0 && matchedGuideIds.includes(selectedGuide.id) && (
+                  <div className="bg-gradient-to-br from-amber-50 to-amber-100/50 border border-amber-300 rounded-2xl p-4 space-y-2.5 shadow-xs animate-in slide-in-from-top-3 duration-300">
+                    <div className="flex items-center gap-1.5 text-amber-900 font-black text-xs">
+                      <Shield size={14} className="text-amber-700 animate-pulse fill-amber-200" />
+                      <span>🛡️ AI 特派安全避坑与反诈生存卡</span>
+                    </div>
+                    {matchReason && (
+                      <p className="text-[10px] text-amber-950 leading-relaxed bg-white/75 p-2 rounded-xl border border-amber-200/80 font-bold font-medium">
+                        <strong>推荐匹配依据：</strong>{matchReason}
+                      </p>
+                    )}
+                    <div className="space-y-1.5">
+                      <span className="text-[9px] font-black uppercase text-amber-800 tracking-wide block">⚠️ 处境生存行动 Checklist：</span>
+                      <ul className="space-y-1.5">
+                        {matchChecklist.map((item, idx) => (
+                          <li key={idx} className="flex items-start gap-1.5 text-[10px] text-gray-700 font-bold leading-relaxed">
+                            <span className="text-[#1C362B] shrink-0 select-none mt-0.5">✔</span>
+                            <span>{item}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                    <p className="text-[8px] text-amber-700/85 font-bold leading-relaxed border-t border-amber-200/60 pt-1.5 mt-1">
+                      💡 提示：本学长姐向导由真实志愿者在校经验构建，是您的第一手“避坑经验库”，非任何商业中介。请参考避坑清单行动！
+                    </p>
+                  </div>
+                )}
+
                 <div>
                   <span className="text-[10px] font-black text-gray-400 uppercase block mb-1">自我介绍</span>
                   <p className="text-xs text-gray-600 leading-relaxed font-semibold">
@@ -1542,6 +1980,60 @@ export default function EcosystemHub() {
                 <div className="bg-gray-50 p-3.5 rounded-2xl text-xs leading-relaxed text-gray-600 font-semibold">
                   “ {selectedItem.description} ”
                 </div>
+
+                {/* AI PRICE CHECK VALUATION REPORT */}
+                {priceCheckResults[selectedItem.id] && (
+                  <div className={`border rounded-3xl p-4 space-y-3 shadow-sm animate-in slide-in-from-top-3 duration-300 ${
+                    priceCheckResults[selectedItem.id].verdict === '划算'
+                      ? 'bg-emerald-50/70 border-emerald-300 text-emerald-955'
+                      : priceCheckResults[selectedItem.id].verdict === '偏贵'
+                      ? 'bg-red-50/70 border-red-300 text-red-955'
+                      : 'bg-amber-50/70 border-amber-300 text-amber-955'
+                  }`}>
+                    <div className="flex items-center justify-between font-black text-xs">
+                      <div className="flex items-center gap-1.5">
+                        <Zap size={14} className="animate-pulse text-amber-700" />
+                        <span>🛡️ Serene AI 全澳智能比价验价</span>
+                      </div>
+                      <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase ${
+                        priceCheckResults[selectedItem.id].verdict === '划算'
+                          ? 'bg-emerald-200 text-emerald-850'
+                          : priceCheckResults[selectedItem.id].verdict === '偏贵'
+                          ? 'bg-red-200 text-red-850'
+                          : 'bg-amber-200 text-amber-850'
+                      }`}>
+                        {priceCheckResults[selectedItem.id].verdict}
+                      </span>
+                    </div>
+
+                    <div className="text-[10px] bg-white/95 border border-gray-150 p-3.5 rounded-2xl space-y-2.5 leading-relaxed text-gray-700">
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <span className="text-[9px] text-gray-400 font-extrabold uppercase block">🇦🇺 澳洲官方全新参考价</span>
+                          <span className="font-extrabold text-gray-900 text-xs font-mono">{priceCheckResults[selectedItem.id].newPrice}</span>
+                        </div>
+                        <div>
+                          <span className="text-[9px] text-gray-400 font-extrabold uppercase block">🇦🇺 澳洲二手合理评估价</span>
+                          <span className="font-extrabold text-emerald-800 text-xs font-mono">{priceCheckResults[selectedItem.id].fairUsedPrice}</span>
+                        </div>
+                      </div>
+
+                      <div className="border-t border-dashed border-gray-150 pt-2">
+                        <span className="text-[9px] text-gray-400 font-extrabold block">AI 全网数据差分推理：</span>
+                        <p className="mt-0.5 text-[10px] font-bold text-gray-800 leading-relaxed">{priceCheckResults[selectedItem.id].reasoning}</p>
+                      </div>
+
+                      <div className="border-t border-dashed border-gray-150 pt-2 bg-gradient-to-r from-amber-50 to-transparent p-1.5 rounded-lg">
+                        <span className="text-[9px] text-amber-800 font-black flex items-center gap-0.5 uppercase">
+                          ⌛ 澳洲法定低保时薪痛感换算：
+                        </span>
+                        <p className="mt-0.5 text-[10px] font-black text-amber-900 leading-snug">
+                          {priceCheckResults[selectedItem.id].painConversion}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 {/* Secure mechanism status display */}
                 <div className="bg-emerald-50/50 border border-emerald-150 p-4 rounded-2xl text-xs space-y-2">

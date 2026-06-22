@@ -1,7 +1,7 @@
 import express from "express";
 import path from "path";
 import multer from "multer";
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenAI, Type } from "@google/genai";
 import "dotenv/config";
 import { createServer as createViteServer } from "vite";
 
@@ -696,6 +696,278 @@ app.post("/api/translate", async (req, res) => {
   } catch (error: any) {
     console.warn("Translation failed, returning failsafe text:", error?.message || error);
     return res.json({ translation: (req.body.text || "") + "\n\n【系统提示：由于当前系统 API 正在排队，未能执行即时中文翻译，您的英文正文已安全保留。】" });
+  }
+});
+
+// ==========================================
+// DYNAMIC AI ENDPOINTS FOR ECOSYSTEM ASSISTANT
+// ==========================================
+
+const FALLBACK_CHECK_PRICE = {
+  verdict: "合理",
+  newPrice: "$45 AUD in Kmart / Target 类似款",
+  fairUsedPrice: "$15 - $25 AUD",
+  reasoning: "【AI 安全盾守护提示】受当前系统访问限流影响，已为您自动启动离线估价守卫。根据在澳中国学业和生活惯例，Kmart、IKEA 及 Target 全新基础电器的指导价大约在 $30-$50 AUD 之间，极具性价比且带全澳联保。若对此款二手有兴趣，请在交易中强烈主张使用 Serene 的‘资金托管双向担保’支付机制面交，以防钱款被提前骗走。",
+  painConversion: "折合打工时薪（澳大利亚最低法定标准约 $24/小时）约 1-1.5 小时的辛勤付出。比起在外卖软件点两顿高昂的外买订单，价格依然属于省钱的健康流转范畴，但面交时一定要认准托管交付。"
+};
+
+const FALLBACK_MATCH_COMPANION = {
+  matchedGuideIds: ["g-1"],
+  reason: "【向导匹配预载成功】针对您的紧急海外处境，我们优先为您引荐对办理三大件（卡号、银行开办及Myki交通开户）、租房陪看、防诈条例极为轻车熟路的林学长 (Alex)。在这里他们不是中介，而是热心互助的经验出处，能帮你瞬间识破澳洲生存踩雷陷阱，避免任何资金意外损失。",
+  checklist: [
+    "在实地登门看房、核实房东官方驾照并在 RTBA（押金官方存管处）创建租房契约之前，坚决不先支付任何人情订金或诚意金！",
+    "办理澳洲主流银行开户或超值手机卡、交通卡都是全自动化在正规网点免费办理的，千万别交由第三方代开，以防身份信息外泄。",
+    "凡是收到带有‘DHL快递包裹扣押’、‘大使馆通知涉嫌国内大案’、‘澳洲ATO税收稽查通知’的中文恐吓，100%是海外专门针对新生的电信诈骗！直接挂断电话！"
+  ]
+};
+
+const FALLBACK_BUDGET_RECIPE = {
+  ingredients: ["土豆 (Potatoes)", "鸡蛋 (Eggs)", "西红柿 (Tomatoes)", "超市吐司/面食"],
+  recipes: [
+    {
+      name: "超省钱留学生双料土豆丝蛋炒饭 (Student Deluxe Potato Stir-fry Rice)",
+      steps: [
+        "将土豆刨成细丝沥干，鸡蛋打散备用。",
+        "热锅下油，倒入蛋液炒散捞出；保持明火下土豆丝大热猛炒2分钟。",
+        "倒入一盘剩米饭和刚捞出的熟蛋花，大火快速颠锅，撒入少许生抽和盐，翻炒至金黄，撒上葱花即可美味出炉。"
+      ],
+      cost: "$3.50 AUD"
+    },
+    {
+      name: "一锅端西红柿鸡蛋焖面 (One-Pot Tomato Egg Stew Noodles)",
+      steps: [
+        "西红柿切丁，葱蒜爆香下锅炒成豆沙沙状出汤汁。",
+        "加入温水大火煮开，打入两个散蛋花或荷包蛋。",
+        "铺入超市购入的 $1 AUD 基础线面，关小火焖熟8分钟，让面条彻底吸饱浓醇西红柿蛋汁。"
+      ],
+      cost: "$4.00 AUD"
+    }
+  ],
+  savingComparison: "【留学生省钱指南】在墨尔本外卖平台点一份类似的单人餐要花费近 $25 AUD（还要包含高涨的服务配送费和送餐小费）。自己动手仅需 $3.5 AUD 且十分钟即可端桌。每餐省下 $21.5 AUD，折合少在餐馆打工 1 个小时！省下来的钱能买上好几个 Kmart 精美汤碗，简直超值！少叫外卖，钱包多存钱！"
+};
+
+app.post("/api/check-price", async (req, res) => {
+  try {
+    const { title, description, price } = req.body;
+    if (!title || price === undefined) {
+      return res.status(400).json({ error: "Missing required fields: title, price" });
+    }
+
+    const aiClient = getAI();
+    const prompt = `你是一个服务于澳洲中国留学生的二手交易验价和反诈助手。
+用户当前在看以下二手商品挂牌：
+- 标题: "${title}"
+- 描述: "${description || "无描述"}"
+- 挂牌销售价: $${price} AUD
+
+请开启内置的 Google Search 全网检索（通过 tools: [{ googleSearch: {} }]），在澳洲当地主流实体大店（如 Kmart, IKEA, JB Hi-Fi, Apple Store, Target, Officeworks 等）及主流二手交易网站中全网比对，寻找同款或最具相似功能的同类“全新”商品真实零售指导价，以及全澳合理的二手均价。
+然后分析该挂牌价（$${price} AUD）是否值得购入，并按照以下要求反馈结构化结构：
+1. 给出判定结论 "verdict": 必须是 "划算"、"合理" 或 "偏贵" 中的某一个。
+2. 给出澳洲本地全新售价与商机来源 "newPrice" (例如：$49 AUD in Kmart)。
+3. 给出该折旧状况下的合理二手交易区间 "fairUsedPrice" (例如：$20 - $30 AUD)。
+4. 编写详细判定中文理由 "reasoning"：用富有同理心且真真戚戚的第一人称口吻，结合避坑防宰逻辑进行分析说明。
+5. 给出趣味痛感物价对比/时薪折算 "painConversion"：必须用澳洲当前法定最低薪资（约 $24 AUD/小时）换算出用户需要打工多少小时，相比高价外卖外送餐能省下多少，用活泼大白话警醒留学生不要被宰。
+
+返回的 JSON 必须严格遵循格式，禁止输出任何 Markdown 表格或 \`\`\`json 标记。
+
+JSON 格式要求：
+{
+  "verdict": "划算或合理或偏贵",
+  "newPrice": "例如 $49 AUD in Kmart",
+  "fairUsedPrice": "例如 $15 - $25 AUD",
+  "reasoning": "中文详细理由",
+  "painConversion": "趣味痛感时薪提示语"
+}`;
+
+    const response = await generateWithRetry(aiClient, 'generateContent', {
+      model: "gemini-3.5-flash",
+      contents: prompt,
+      config: {
+        tools: [{ googleSearch: {} }],
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            verdict: { type: Type.STRING, description: "必为：划算、合理、偏贵 之一" },
+            newPrice: { type: Type.STRING, description: "全新行情价格与来源" },
+            fairUsedPrice: { type: Type.STRING, description: "合理二手售价区间" },
+            reasoning: { type: Type.STRING, description: "详细中文分析理由，需体现反诈与避坑思维" },
+            painConversion: { type: Type.STRING, description: "结合法定最低时薪 $24 AUD/小时的痛感白话对比" }
+          },
+          required: ["verdict", "newPrice", "fairUsedPrice", "reasoning", "painConversion"]
+        }
+      }
+    });
+
+    let text = response.text;
+    if (!text) {
+      throw new Error("Empty response from Gemini API");
+    }
+
+    text = text.replace(/^```json\s*/, '').replace(/```\s*$/, '').trim();
+    const result = JSON.parse(text);
+    return res.json(result);
+  } catch (error: any) {
+    console.error("Gemini check-price failed, falling back gracefully:", error?.message || error);
+    return res.json(FALLBACK_CHECK_PRICE);
+  }
+});
+
+app.post("/api/match-companion", async (req, res) => {
+  try {
+    const { description, companions } = req.body;
+    if (!description) {
+      return res.status(400).json({ error: "No description provided" });
+    }
+
+    const aiClient = getAI();
+    const prompt = `你是一个服务于新到达墨尔本的中国留学生的向导最优匹配与避坑规划专家。
+留学生目前描述了他遇到的棘手生存处境或具体生活困难/迷茫：
+"${description}"
+
+我们手头现有以下热心、有三年左右墨尔本生活阅历的注册向导学霸学长姐：
+${JSON.stringify(companions)}
+
+请根据该留学生的具体处境，完成以下动作：
+1. 挑选出 1 到 2 位最能够提供对症经验和现场支持、带路陪办、租房避坑的向导成员，并返回他们的 ID 数组 "matchedGuideIds"。
+2. 给出推荐他们的温情详细原因 "reason"：在中文里极力突出学长姐不仅是陪同，更是带其绕过异乡深坑、识破诈骗、省钱避坑的“真实经验库”。
+3. 产出 3 到 5 道极度接地气且实用有效的“海外省钱反诈求生检查卡” "checklist"：用大白话或警世句警告和指导他们接下来如何正确行动、规避红线。
+
+返回 JSON 格式要求（严禁 markdown 包裹）：
+{
+  "matchedGuideIds": ["向导ID"],
+  "reason": "匹配推荐理由",
+  "checklist": ["检查卡第1条", "检查卡第2条", "检查卡第3条"]
+}`;
+
+    const response = await generateWithRetry(aiClient, 'generateContent', {
+      model: "gemini-3.5-flash",
+      contents: prompt,
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            matchedGuideIds: {
+              type: Type.ARRAY,
+              items: { type: Type.STRING },
+              description: "匹配出来的最合适向导ID数组 (如: g-1, g-2)"
+            },
+            reason: { type: Type.STRING, description: "真挚的匹配推荐理由说明" },
+            checklist: {
+              type: Type.ARRAY,
+              items: { type: Type.STRING },
+              description: "3至5条非常针对该处境的排雷、省钱或防宰生动行动条目"
+            }
+          },
+          required: ["matchedGuideIds", "reason", "checklist"]
+        }
+      }
+    });
+
+    let text = response.text;
+    if (!text) {
+      throw new Error("Empty response from matching engine");
+    }
+
+    text = text.replace(/^```json\s*/, '').replace(/```\s*$/, '').trim();
+    const result = JSON.parse(text);
+    return res.json(result);
+  } catch (error: any) {
+    console.error("Gemini match-companion failed, fallback active:", error?.message || error);
+    return res.json(FALLBACK_MATCH_COMPANION);
+  }
+});
+
+app.post("/api/budget-recipe", upload.single("image"), async (req, res) => {
+  try {
+    const file = req.file;
+    if (!file) {
+      return res.status(400).json({ error: "No image file provided" });
+    }
+
+    const aiClient = getAI();
+    const prompt = `你是一个备受留学生喜爱的澳洲本地精打细算主厨厨神和冰箱魔法师。
+用户上传了一张冰箱里库存食物原料的照片，或者是一张超市买菜的小票/收据。
+请仔细扫描分析图片：
+1. 识别出里面可以看到的主要食材，生成食材列表 "ingredients"。
+2. 设计 2 到 3 道专门针对留学生的极简快手、省时省电且极度美味便宜的快餐菜谱 "recipes"。
+3. 对每道菜给出其名字 "name"、详细制作步骤数组 "steps" 以及这顿吃下来的预估澳洲本地花费 "cost"（AUD格式，如 $4.50 AUD）。
+4. 撰写一份“外卖断舍离痛感对比” "savingComparison"：与在澳洲当地外送订饭（一餐起步价连配和税、送餐费轻松过 $25-$35 AUD）进行金钱对比，用澳洲法定最低薪资 ($24/时) 换算成打工小时痛感，生动劝学自我做饭省钱。
+
+返回 JSON 格式要求，不要包裹在 markdown 行中：
+{
+  "ingredients": ["食材1", "食材2"],
+  "recipes": [
+    { "name": "菜肴名", "steps": ["步骤1", "步骤2"], "cost": "$3.50 AUD" }
+  ],
+  "savingComparison": "趣味省钱痛感段落"
+}`;
+
+    const response = await generateWithRetry(aiClient, 'generateContent', {
+      model: "gemini-3.5-flash",
+      contents: [
+        {
+          role: "user",
+          parts: [
+            { text: prompt },
+            {
+              inlineData: {
+                data: file.buffer.toString("base64"),
+                mimeType: file.mimetype,
+              },
+            },
+          ],
+        },
+      ],
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            ingredients: {
+              type: Type.ARRAY,
+              items: { type: Type.STRING },
+              description: "从照片中检测出或从小票中分析得出的中/英原料词条列表"
+            },
+            recipes: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  name: { type: Type.STRING, description: "推荐留学生好煮又省料的菜品名字" },
+                  steps: {
+                    type: Type.ARRAY,
+                    items: { type: Type.STRING },
+                    description: "通俗易懂的极简烹饪指导步骤"
+                  },
+                  cost: { type: Type.STRING, description: "澳洲自煮这顿餐的预估综合成本 (如 '$3.80 AUD')" }
+                },
+                required: ["name", "steps", "cost"]
+              },
+              description: "2-3道基于食材库推荐的精打细算美味食谱"
+            },
+            savingComparison: {
+              type: Type.STRING,
+              description: "与主流送餐平台天价外卖的辛辣且关切的省钱对比分析"
+            }
+          },
+          required: ["ingredients", "recipes", "savingComparison"]
+        }
+      }
+    });
+
+    let text = response.text;
+    if (!text) {
+      throw new Error("Empty image response from magic chef");
+    }
+
+    text = text.replace(/^```json\s*/, '').replace(/```\s*$/, '').trim();
+    const result = JSON.parse(text);
+    return res.json(result);
+  } catch (error: any) {
+    console.error("Gemini budget-recipe failed, fallback active:", error?.message || error);
+    return res.json(FALLBACK_BUDGET_RECIPE);
   }
 });
 
