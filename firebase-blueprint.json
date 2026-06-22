@@ -1,0 +1,15 @@
+{
+  "collections": [
+    {
+      "name": "appeals",
+      "fields": [
+        { "name": "uid", "type": "string", "description": "User ID" },
+        { "name": "type", "type": "string", "description": "Type of appeal (fine, bill, warning)" },
+        { "name": "content", "type": "string", "description": "Extracted text content" },
+        { "name": "analysis", "type": "string", "description": "Gemini analysis in Chinese" },
+        { "name": "draft", "type": "string", "description": "Draft response in English" },
+        { "name": "createdAt", "type": "timestamp" }
+      ]
+    }
+  ]
+}

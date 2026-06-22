@@ -1,0 +1,8 @@
+{
+  "name": "Remix: Overseas First Responder",
+  "description": "An AI-powered assistant for overseas students to analyze bills, fines, and warnings, and automatically draft and send appeal emails.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
