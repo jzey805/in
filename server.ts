@@ -552,6 +552,419 @@ function generateDynamicOfflineScamCheck(flags: string[], userText: string = "")
   };
 }
 
+function generateDynamicOfflineShield(textInfo: string = ""): any {
+  const textLower = (textInfo || "").toLowerCase();
+  
+  if (textLower.includes("rent") || textLower.includes("租房") || textLower.includes("房东") || textLower.includes("看房") || textLower.includes("押金") || textLower.includes("定金") || textLower.includes("公寓") || textLower.includes("western union") || textLower.includes("西联")) {
+    const originalPreset = PRESET_SHIELD_ANALYSES.rent;
+    return {
+      riskLevel: "red",
+      title: "⚠️ 离线诊断防线：" + originalPreset.title,
+      summary: "⚠️ 当前由于网络配额限制无法连通 AI 实时扫描。我们已为您匹配了本盾的离线租房骗局图谱：\n\n" + originalPreset.summary,
+      redFlags: originalPreset.redFlags,
+      valueCheck: originalPreset.valueCheck
+    };
+  }
+  
+  if (textLower.includes("item") || textLower.includes("炉") || textLower.includes("微波炉") || textLower.includes("marketplace") || textLower.includes("二手") || textLower.includes("全新") || textLower.includes("kmart") || textLower.includes("买") || textLower.includes("卖") || textLower.includes("价格") || textLower.includes("值不值")) {
+    const originalPreset = PRESET_SHIELD_ANALYSES.item;
+    return {
+      riskLevel: "yellow",
+      title: "⚠️ 离线诊断防线：" + originalPreset.title,
+      summary: "⚠️ 当前由于网络配额限制无法连通 AI 实时估值。我们已为您匹配了本盾的离线二手家电比价图谱：\n\n" + originalPreset.summary,
+      redFlags: originalPreset.redFlags,
+      valueCheck: originalPreset.valueCheck
+    };
+  }
+
+  return {
+    riskLevel: "yellow",
+    title: "⚠️ 离线排雷参考：防诈避坑通用扫描报告",
+    summary: "⚠️ 当前因网络配额限制无法联网实时分析，已自动启用本地离线安全防御建议。请对照您的案例自查：",
+    redFlags: [
+      "房源看房雷区：凡是房东声称‘本人在海外/英国/外地’无法带您看房，却要求交钱锁房/邮寄钥匙的，均为100%骗局。",
+      "特异付款方式：要求用西联汇款、不可回滚的第三方礼品卡序列号、非本土跨国转账，极度危险。",
+      "二手家电虚高：Kmart/Target等全澳连锁商购买全新家电往往比不少同城二售价还便宜（如基础微波炉仅 $49，水壶 $10），入二手前请务必先比对全新公价。"
+    ],
+    valueCheck: {
+      localPrice: "$10 - $150 AUD",
+      rmbEquivalent: "折合人民币约 50 - 720 元",
+      wittyComparison: "按澳洲法定最低时薪 $24 算，仅需打工 2~6 小时即能入手大部分全新基础生活必需品，入二手货不仅需要考虑自提费用，还要提防电器安全隐患。"
+    }
+  };
+}
+
+function generateDynamicOfflineBillAnalysis(originalName: string, activeCase: string): any {
+  const norm = (originalName || "").toLowerCase();
+  const act = (activeCase || "").toLowerCase();
+  
+  let detectedType = "warning";
+  let documentName = "自定义公函件";
+  let painMsg = "非合理扣款或罚单通常可为您挽回至少数百澳币，极具交涉抗辩价值。按法定最低时薪 $24 算，挽回这笔开销相当于您少打工十多个小时！";
+  let actionPoints = [
+    "核对重要时限：仔细检查信件中的 Due Date (截止时间)，所有官方纠纷维权有严格的诉讼时效限制。",
+    "留存事实佐证：收集保存完整的往来邮件、交租记录、照片或故障报告，澳洲仲裁庭最看重白纸黑字客观证据。",
+    "撰写书面抗辩：利用下方自动排版的通用申诉草案，将括弧中的姓名与单号替换为您真实的信息，即刻发送申辩。"
+  ];
+  let draftIntention = "向发函方申请延迟、复议与细节对账的留学生通用答复信。在态度诚恳的基础上，陈述自己是正在竭力融入当地生活、注重合规性的国际学生，阐明特殊困难主张 Case-by-case 审查。";
+  let emailSubject = "Formal Statement & Query for Case Review - Reference Required";
+  let emailBody = `Dear Support and Disputes Resolution Team,
+
+I am writing to you in sincere goodwill regarding the official notice (Reference: [Please Fill Reference Number / Case ID]) recently received in my name.
+
+As an international student currently adapting to the independent lifestyle, unique renting environments, and official regulatory channels here in Australia, I found aspects of the instructions or charges a bit challenging to address on immediate short notice. Nevertheless, I deeply value compliance and wish to address this case in full cooperation with your office.
+
+Therefore, I kindly request checking or reviewing the specific details is there any scope for discretion. Additionally, I would be most grateful if your office could approve a temporary 14-day payment extension or waive any potential late fees / penalty components while this matter is under consideration.
+
+I look forward to your guidance and instruction to resolve this smoothly.
+
+Thank you very much for your understanding, patience, and kind support.
+
+Yours faithfully,
+
+[Your Name]
+[Contact mobile number]`;
+  let draftChinese = `尊敬的小组申诉处理团队：
+
+我怀着由衷的诚意写信给您，关于最近以我名义收到的官方信函/收费通知（参考单号：[请填写您的通知书单号或参考ID]）。
+
+作为一名正在努力适应澳大利亚当地生活方式、特殊合规渠道的国际留学生，我发现在如此短暂的通知期限内，理解并完备配合通知中的全部章程及收缴项目具有不小的挑战。尽管如此，我极度看重合规安全，并希望在贵处办公室的指导下全力配合解决此项事宜。
+
+因此，我极其恳切地请求贵处能对该案情进行酌情审查，看看是否存在行政豁免或减记空间。此外，若贵处愿意批准临时 14 天的顺延期，或在复审期间免除可能因滞纳导致的额外行政罚金，我将不胜感激。
+
+期待能在您的专业指导下圆满妥协此事。非常感谢您的耐心阅读、体谅与宝贵支持。
+
+您诚挚的，
+
+[您的姓名]
+[您的联系电话]`;
+
+  if (norm.includes("fine") || norm.includes("penalty") || norm.includes("parking") || norm.includes("speed") || norm.includes("ticket") || norm.includes("罚") || norm.includes("违法") || norm.includes("违章") || act === "fine") {
+    detectedType = "fine";
+    documentName = "交通/过路或超速罚缴单 (Fine Notice)";
+    painMsg = "在澳洲罚单价值极高（动辄 100 到 400 澳币），如漏缴还会触发滞纳高息或限制出境。用澳洲法定最低时薪 $24 换算，缴清罚单相当于你辛辛苦苦去餐馆打工折腾 8 到 16 个小时！若属于首次误闯或指示牌不清晰，申请 Internal Review 撤罚率过半，极为值得一试。";
+    actionPoints = [
+      "查询政府申覆渠道：可在 Victoria Fines / NSW Revenue 等州府罚单官方申述入口，提交 'Internal Review' 首次豁免申请。",
+      "详书客观理由：例如当时车辆发生紧急抛锚、路标被树枝遮蔽或该路段首次走错。如果过去三年驾照无任何违法，可主张 'Excellent Driving Record' 申请豁免。",
+      "千万别超时不理：请在信件通知截止（Due Date）前提出，申请一旦提交，该罚单罚款将被依法冻结，直到政府给出书面审核答复。"
+    ];
+    draftIntention = "针对交通或行政罚单申请官方 Internal Review（内部初犯审核豁免）。以极为客气自守的留学生初犯口吻，陈述自己一贯遵守交规，并详细解释无意犯规之特殊缘由（如标识不清或紧急路况），恳请根据豁免条例代入警告处理。";
+    emailSubject = "Request for Internal Review and Discretionary Warning - Penalty Notice [Fill Reference]";
+    emailBody = `Dear Fines and Infringements Review Committee,
+
+I write to formally request an Internal Review regarding Infringement Notice Number [Enter Infringement Number], issued on [Date of Issue].
+
+As an international student living here in Australia, I have always taken my public compliance and road safety responsibilities very seriously. My record has been entirely clear prior to this minor infraction. On the day of the incident, unfortunately, I was faced with a highly confusing road sign placement and felt unsafe pulling over due to heavy rain. This minor oversight was completely unintentional.
+
+Under your official discretion guidelines for first-time mild infractions or clear histories, I kindly seek your consideration to withdraw this penalty notice and replace it with an official cautionary warning. I have enclosed my clean licensing record and photographs of the confusing signs for your referencing.
+
+Thank you very much for reviewing my request with understanding and empathy.
+
+Yours faithfully,
+
+[Your Name]
+[Driver Licensing State & Number]`;
+    draftChinese = `尊敬的罚款与侵权行为复审委员会：
+
+我写信旨在正式申请对我在 [发证日期] 签发的处罚书（编号：[此处填入您的罚单编号]）进行官方内部复核。
+
+作为一名在澳留学生，我一向极为看重公共秩序，并极力践行道路安全准则。在此案之前，我的合规记录完美无瑕。在事发当日，遗憾的是，我遇到了一处排布极易引起混淆的停车/行车标志，且当时因暴雨视线受阻，在车流中强行变道实属不安全。这起轻微疏忽完完全全是非故意的。
+
+鉴于贵处关于首次轻微违规或完美历史记录的干预酌情指南，我极度恳切地希望您能考虑收回此份处罚决定书，仅予以我官方警告戒勉。我已随信附上了本人的无违规记录复印件以及当时混淆标志的照片供审查。
+
+万分体谅并感谢各位评审人员对此请求的耐心阅读与同理通融。
+
+您诚挚的，
+
+[您的姓名]
+[您的驾照发放州和编号]`;
+  } else if (norm.includes("bond") || norm.includes("deposit") || norm.includes("landlord") || norm.includes("carpet") || norm.includes("cleaning") || norm.includes("退房") || norm.includes("押金") || act === "bond") {
+    detectedType = "bill";
+    documentName = "租房退房押金争执警告 (Bond Dispute)";
+    painMsg = "退房时澳洲中介常借口“地毯不干净”或“磨损”恶意扣押上千澳币的 Bond 金（折合数千元人民币，约等于您打工 40 多个小时的血汗钱！）。澳洲法律规定，只要房客在 RTBA/RTA 官网抢先自主发起退全额押金申请，中介就必须在 14 天内拿出确凿法理证据抗辩并提起诉讼，否则官方将强制退回您全部押金！一定要据理力争！";
+    actionPoints = [
+      "抢先发起官方退款申请：千万不要等中介结算！您应直接登录租金存管官方机构（如 RTBA / RTA）率先在线点击申请划扣全额退押（Claim Bond）。",
+      "书面驳斥不实扣款：写信直截了当驳斥其缺乏 Pre-renting 与 End-renting 对照照片，并依法指出正常老化（Fair Wear and Tear）无需租客承担清洁重置费。",
+      "表明仲裁决心：在信中坚决主张如果没有共识将交由 VCAT/NCAT 仲裁庭开庭。中介为了避免繁琐的出庭开销，近 80% 会在收到此封信后让步妥协。"
+    ];
+    draftIntention = "正式书面通知房东/中介，坚定驳回其不合理的退房扣款（如地毯残留或微损）。援引澳洲租赁法案（Residential Tenancies Act）中关于‘合理折旧老化’（Fair Wear and Tear）的保护条款，声明已在官方RTBA发起了全额退押申请，敦促其退回余款，否则将在本地VCAT仲裁庭听证。";
+    emailSubject = "Response to Unfair Bond Claims & Demand for Full Return - Property: [Address]";
+    emailBody = `Dear Property Manager / Landlord,
+
+I write in response to your email regarding the proposed bond deductions of $[Enter Amount] for the tenancy at [Enter Property Address]. We strongly decline these charges.
+
+Upon moving in, the property condition report, which we duly submitted with photos, showed that the issues raised (such as minor carpet blemishes and sliding door squeaks) were already pre-existing or constitute "Fair Wear and Tear" under Section 41 of the Residential Tenancies Act. As tenants, we are only legally required to leave the house in a "reasonably clean" condition, which we satisfied via standard professional cleaning.
+
+Please be advised that we have already submitted our official Claim for Refund of Bond with the RTBA/RTA today. If you choose to dispute this and initiate a hearing at the civil tribunal (VCAT/NCAT), we have a comprehensive collection of entry and exit photos ready for presentation. We urge you to cancel these claims and approve the full refund immediately to avoid formal dispute costs.
+
+Thank you for cooperation.
+
+Yours sincerely,
+
+[Your Name]
+[Tenant Name]`;
+    draftChinese = `尊敬的物业经理/房东：
+
+我写信旨在回复您关于拟对 [请填写房产地址] 承租押金进行 $[请填写扣款金额] 扣款提案的声明。我们对此声明坚决不予认可。
+
+根据我们入住时按期递交的回执及图片，您目前所提及的微小瑕疵（例如轻微的地毯污斑与推拉门划纹）在入住前就已存在，或者根据住宅租赁法第41条，属于法定的“合理折旧磨损（Fair Wear and Tear）”。作为租客，法律仅要求我们在退房时保持“底线性清洁”，我们已通过专业标准的整扫兑现了此义务。
+
+请注意，我们今天已向 RTBA/RTA 官方信托中心发起了率先提取全额押金申请。如果您执意提起诉讼并将此案提交至各州民事仲裁法庭（VCAT/NCAT）聆讯，我们已彻底完备好全套入住和退房的对照图以供庭审。我们强烈奉劝贵司取消不实索赔，即刻批准释放全部 Bond 金以避免繁复争端。
+
+感谢您的配合。
+
+您诚挚的，
+
+[您的姓名]
+[租客名]`;
+  } else if (norm.includes("coe") || norm.includes("show cause") || norm.includes("academic") || norm.includes("enrolment") || norm.includes("suspend") || norm.includes("警告") || norm.includes("停学") || act === "coe") {
+    detectedType = "warning";
+    documentName = "学术进度不达标/停学警告通知书 (Show Cause Alert)";
+    painMsg = "在澳洲如果连续两个学期挂科超过 50%，或者同一门核心课挂科两次，大学会自动触发“Show Cause / Academic Progress”听证警告。如果解释不通过，大学会吊销 CoE 并向移民局（DHA）上报，可能导致留学生学生签证在 28 天内被强制取消，彻底被遣返回国！这是最高级别预警，必须用极其严密的论述证明自己并消除委员会的疑虑。";
+    actionPoints = [
+      "寻找中立的客观理由：千万不能承认自己不爱学习或玩游戏！必须写由于“Compassionate or Compelling Circumstances”（令人同情或不可抗力环境），如严重的生理/心理疾病、亲属变故或跨国文化适应障碍。",
+      "提供坚实书面证据：比如澳洲全科医生（GP）出具的医疗病假条（Medical Certificate）或大学心理咨询证明，以及学习改进计划（Academic Improvement Plan）。",
+      "展示清晰的痛改前非计划：说明自己将如何调整，包括下学期少修一门课、定期约谈学术导师等，说服委员会您已走上正轨。"
+    ];
+    draftIntention = "向学院学术委员会（Academic Progress Committee）递交 Show Cause 书面抗辩陈述信。真诚表达对学业不及格的愧疚，坚称自己渴望继续深造，重点陈述由于突发重大生活境况（如医疗健康问题）导致的非主观控制失误，列清强力纠偏学习策略，求得保留 CoE 注册资格。";
+    emailSubject = "Academic Progress Response and Show Cause Submission - [Your Student ID]";
+    emailBody = `Dear Chairman and Members of the Academic Progress Committee,
+
+I write in response to your notice of Academic Progress unsatisfactory academic performance and the invitation to submit a Show Cause statement for my continued enrolment.
+
+Firstly, I wish to apologize for my poor academic performance in the past semester. I am deeply remorseful, as completing my education here is my highest life goal. However, my results were caused by unforeseen compassionate circumstances. I suffered a severe mental wellness breakdown due to the sudden passing of my guardian, which left me struggling with diagnosed clinical anxiety. I have attached my medical practitioner’s certificate for your review.
+
+Since receiving your academic warnings, I have taken active steps to remedy my situation. I have consulted the Student Wellbeing Service, established a bi-weekly mentorship with my academic advisor, and plan to reduce my study load to 3 units for the upcoming semester. 
+
+I respectfully ask the committee to provide me with one final opportunity to prove my capabilities and maintain my Confirmation of Enrolment (CoE).
+
+Thank you for your valuable time and consideration of my case.
+
+Yours faithfully,
+
+[Your Name]
+[Student ID]`;
+    draftChinese = `尊敬的学术评估委员会主席及各位委员：
+
+我写信旨在正式回应关于我上学期学业表现不达标的通知，并向委员会提交我申请继续在学校保留注册学籍（CoE）的书面陈辩声明。
+
+首先，我为自己上学期差强人意的表现和挂科向各位老师表达深深的歉意与负疚感。在这一所优秀的学府完成深造是我的至高荣誉，但上学期这一反常结果是由突发的、令人痛心的家庭原因导致的。我的监护人骤然离世，使我承受了极度的心理重创并被临床诊断为焦虑症。随信附上了澳大利亚全科医生及心理咨询医师的医疗证明。
+
+自收到警醒后，我已采取大量积极举措：定期约谈学生心理服务中心，与专业学术导师建立两周一次的学习纠偏汇报，并主动将下学期排课削减至 3 门，以稳扎稳打确保通过率。
+
+我极为恳切地祈请委员会能给予我最后一次自证机会，让我继续保留 CoE 学籍。感谢各位老师的悉心审阅与其同理关切。
+
+您诚挚的，
+
+[您的姓名]
+[学号]`;
+  }
+
+  return {
+    type: detectedType,
+    summary: `⚠️ 离线智援报告：针对您上传的名为“${originalName || documentName}”的公函。当前由于外部网络接入受限，我们自动启动本地防卷策略图谱：该函疑似属于 ${documentName} 类型。为保障您的留学生活安稳度，我们已为您匹配出对应的离线本地避坑处理方案：`,
+    painConversion: painMsg,
+    actionPlan: actionPoints,
+    englishDraft: {
+      intention: draftIntention,
+      recipientEmail: "support@service-issuer.edu.au",
+      subject: emailSubject,
+      body: emailBody,
+      chineseTranslation: draftChinese
+    }
+  };
+}
+
+function generateDynamicOfflineCheckPrice(title: string = "", price: number = 0, description: string = ""): any {
+  const titleLower = (title || "").toLowerCase();
+  
+  let verdict = "合理";
+  let newPriceRange = "$45 - $150 AUD";
+  let fairUsedPrice = "$15 - $50 AUD";
+  let reasoning = "";
+  let painConversion = "";
+
+  if (titleLower.includes("phone") || titleLower.includes("iphone") || titleLower.includes("苹果") || titleLower.includes("小米") || titleLower.includes("华为") || titleLower.includes("samsung") || titleLower.includes("手机")) {
+    newPriceRange = "$899 - $1799 AUD (全新官价)";
+    fairUsedPrice = `$${Math.max(150, Math.round(price * 0.8))} - $${Math.round(price * 1.25)} AUD`;
+    if (price > 1200) {
+      verdict = "偏贵";
+    } else if (price < 400) {
+      verdict = "划算";
+    }
+    reasoning = `⚠️ 离线验价提示：当前由于网络配额限流，我们为您开启了本地数码防坑验价数据库。您检索的是手机类商品 “${title}”（挂牌 $${price} AUD）。数码二手是海外诈骗最高发区之一（如预付邮至骗局）。请务必和商家索要真实的网银购买记录/原厂发票，并坚持同城实物面交，仔细当场开机核对电池健康度与有无锁。`;
+  } else if (titleLower.includes("laptop") || titleLower.includes("ipad") || titleLower.includes("macbook") || titleLower.includes("平板") || titleLower.includes("电脑") || titleLower.includes("dell") || titleLower.includes("联想") || titleLower.includes("hp")) {
+    newPriceRange = "$799 - $1999 AUD";
+    fairUsedPrice = `$${Math.max(100, Math.round(price * 0.75))} - $${Math.round(price * 1.15)} AUD`;
+    if (price > 1400) {
+      verdict = "偏贵";
+    } else if (price < 350) {
+      verdict = "划算";
+    }
+    reasoning = `⚠️ 离线验价提示：您检索的是电脑或平板数码设备 “${title}”（挂牌 $${price} AUD）。在海外，高价值电子产品交易极易遇到屏幕老化暗光、主板曾浸水翻新等。建议您在交易中强烈要求对方当面连线测试，如果是苹果账户，确保其已在您面前彻底抹去 iCloud 关联。`;
+  } else if (titleLower.includes("fridge") || titleLower.includes("washing") || titleLower.includes("wave") || titleLower.includes("pot") || titleLower.includes("kettle") || titleLower.includes("电") || titleLower.includes("冰箱") || titleLower.includes("洗衣机") || titleLower.includes("微波炉") || titleLower.includes("炉") || titleLower.includes("水煲") || titleLower.includes("家具") || titleLower.includes("床")) {
+    newPriceRange = "$49 - $350 AUD (澳洲 Kmart/Target 类似全新基础款价格)";
+    fairUsedPrice = `$${Math.max(10, Math.round(price * 0.4))} - $${Math.max(20, Math.round(price * 0.75))} AUD`;
+    if (price > 120) {
+      verdict = "偏贵";
+    } else if (price < 35) {
+      verdict = "划算";
+    }
+    reasoning = `⚠️ 离线验价提示：您查询的是生活家电/家具商品 “${title}”（挂牌 $${price} AUD）。特别提示：像微波炉（全新 Kmart 仅需 $49 AUD）、烧水壶（全新 $10 AUD ）、基础书桌等全新物品在本地公价极低，且带完整保修。入二手除了要担负极高的拖运搬车成本外，还要提防电器老化安全隐患。建议仔细权衡搬运费后再与对方还价。`;
+  } else {
+    newPriceRange = `$${Math.round(price * 1.5)} - $${Math.round(price * 2.5)} AUD (全新品类指导价)`;
+    fairUsedPrice = `$${Math.max(5, Math.round(price * 0.5))} - $${Math.max(15, Math.round(price * 0.9))} AUD`;
+    reasoning = `⚠️ 离线验价提示：您查询的是“${title}”（挂牌价 $${price} AUD）。后台已自动匹配澳洲常备物价标准进行评估。该二手物品挂牌价格处于合乎留学生常规认知的区间。二手家具与杂货切忌提前打去定金，交易前应与卖家沟通清楚自提时间及电梯搬运要求。`;
+  }
+
+  painConversion = `挂牌价 $${price} AUD 折合当前澳洲法定最低打工时薪（约 $24 AUD/小时）近 ${Math.max(0.1, Math.round(price / 24 * 10) / 10)} 小时的劳动成果。不管是划算还是偏贵，二手交易牢记‘一手交钱，一手交货’，绝不提前私下汇款或付锁物订金！`;
+
+  return {
+    verdict,
+    newPrice: newPriceRange,
+    fairUsedPrice,
+    reasoning,
+    painConversion
+  };
+}
+
+function generateDynamicOfflineMatchCompanion(description: string = "", companions: any[] = []): any {
+  const descLower = (description || "").toLowerCase();
+  const list = Array.isArray(companions) ? companions : [];
+  
+  let matched: any[] = [];
+  if (descLower.includes("租房") || descLower.includes("rent") || descLower.includes("bond") || descLower.includes("房东") || descLower.includes("中介")) {
+    matched = list.filter(c => {
+      const bio = (c.bio || "").toLowerCase();
+      const name = (c.name || "").toLowerCase();
+      return bio.includes("租") || bio.includes("房") || bio.includes("rent") || bio.includes("house") || bio.includes("room") || name.includes("林") || name.includes("alex");
+    });
+  } else if (descLower.includes("吃") || descLower.includes("买菜") || descLower.includes("coles") || descLower.includes("woolworths") || descLower.includes("菜") || descLower.includes("food")) {
+    matched = list.filter(c => {
+      const bio = (c.bio || "").toLowerCase();
+      return bio.includes("吃") || bio.includes("油") || bio.includes("厨") || bio.includes("省") || bio.includes("coo") || bio.includes("food");
+    });
+  } else if (descLower.includes("学") || descLower.includes("挂科") || descLower.includes("抄") || descLower.includes("听证") || descLower.includes("coe") || descLower.includes("academic")) {
+    matched = list.filter(c => {
+      const bio = (c.bio || "").toLowerCase();
+      return bio.includes("学") || bio.includes("听证") || bio.includes("挂") || bio.includes("法") || bio.includes("申诉") || bio.includes("ca") || bio.includes("degree");
+    });
+  }
+
+  if (matched.length === 0 && list.length > 0) {
+    matched = list.filter(c => {
+      const bio = (c.bio || "").toLowerCase();
+      return bio.includes("学长") || bio.includes("伴") || bio.includes("陪") || bio.includes("诈") || bio.includes("省");
+    });
+  }
+
+  if (matched.length === 0 && list.length > 0) {
+    matched = list.slice(0, 2);
+  }
+
+  const ids = matched.map(m => m.id || "g-1");
+  const namesStr = matched.map(m => m.name || "").filter(Boolean).join("与");
+
+  const checklists: string[] = [
+    "在实地登门看房、签署正规租约并在维州官方 RTBA（押金系统）存扣押金之前，坚决拒绝先付任何人情诚意金！",
+    "办理澳洲主流银行卡、超值手机卡、学生交通卡，在正常营业厅和官网均是免费办理，千万别付中介代办费，以防隐私外泄。",
+    "凡是接到带有中文‘快递包裹扣押、大使馆急件刑事协查、澳洲ATO欠税稽查’的逼迫汇款，100%是骗局！直接挂断！"
+  ];
+
+  if (descLower.includes("租房") || descLower.includes("rent")) {
+    checklists.unshift("小心精美便宜租房陷阱：如果位置极好（如墨尔本CBD）且租金极低，房东借口本人在英国无法带你看房，催促交订，此乃百分百跨国网络行骗。");
+  } else if (descLower.includes("吃") || descLower.includes("买菜")) {
+    checklists.unshift("自煮大省小妙招：每周二/三晚上 Coles/Woolworths 的临期熟食及原切肉排会挂上极为诱人的 5 折黄标，是充实冰箱省钱的第一去处。");
+  }
+
+  return {
+    matchedGuideIds: ids,
+    reason: `【应急向导精准推荐】在系统离线应急配发模式下，针对您陈述的 “${description.substring(0, 25)}${description.length > 25 ? '...' : ''}” 困难，我们优先为您引荐对该领域最为熟捻的学长学姐：${namesStr || "资深留学生向导 Alex"}。他们在这里不是中介，而是热心互助的海外经验智囊，能帮您瞬间识破本地踩雷陷阱，保卫安全。`,
+    checklist: checklists
+  };
+}
+
+function generateDynamicOfflineBudgetRecipe(originalname: string = "", description: string = ""): any {
+  const origLower = (originalname || "").toLowerCase();
+  const descLower = (description || "").toLowerCase();
+
+  let ingredients = ["土豆 (Potatoes)", "鸡蛋 (Eggs)", "西红柿 (Tomatoes)", "超市吐司/面食"];
+  let recipes = [
+    {
+      name: "超省钱留学生双料土豆丝蛋炒饭 (Student Deluxe Potato Stir-fry Rice)",
+      steps: [
+        "将土豆刨成细丝沥干，鸡蛋打散备用。",
+        "热锅下油，倒入蛋液炒散捞出；保持明火下土豆丝大热猛炒2分钟。",
+        "倒入一盘剩米饭和刚捞出的熟蛋花，大火快速颠锅，撒入少许生抽和盐，翻炒至金黄，撒上葱花即可美味出炉。"
+      ],
+      cost: "$3.50 AUD"
+    },
+    {
+      name: "一锅端西红柿鸡蛋焖面 (One-Pot Tomato Egg Stew Noodles)",
+      steps: [
+        "西红柿切丁，葱蒜爆香下锅炒成豆沙沙状出汤汁。",
+        "加入温水大火煮开，打入两个散蛋花或荷包蛋。",
+        "铺入超市购入的 $1 AUD 基础线面，关小火焖熟8分钟，让面条彻底吸饱浓醇西红柿蛋汁。"
+      ],
+      cost: "$4.00 AUD"
+    }
+  ];
+
+  if (origLower.includes("meat") || origLower.includes("chicken") || origLower.includes("pork") || origLower.includes("beef") || origLower.includes("肉") || origLower.includes("鸡")) {
+    ingredients = ["原切鸡胸肉/碎猪肉", "大蒜 (Garlic)", "西兰花/洋葱", "大米/意大利面"];
+    recipes = [
+      {
+        name: "精打细算黑椒洋葱炒鸡柳 (Budget Black Pepper Onion Chicken)",
+        steps: [
+          "鸡胸肉切成薄片或细柳，用生抽、生粉和少许油腌制5分钟。",
+          "洋葱切丝、热锅冷油，将腌制好的鸡片快速过油炒熟变白，捞起。",
+          "锅底留油倒入洋葱大火煸炒至焦香，再倒入炒好的鸡柳，撒入现磨黑胡椒粉与盐，翻炒1分钟后热气端盘。"
+        ],
+        cost: "$4.80 AUD"
+      },
+      {
+        name: "超市大折超低本金滑蛋碎肉意面 (Discount Pork Mince Egg Pasta)",
+        steps: [
+          "在 Woolworths 购买超平价的碎猪肉/牛绞肉（通常半斤约 $3 AUD）。意面煮熟沥干备用。",
+          "绞肉下锅炒熟变色，加入红烧香料或意面酱翻炒均匀。",
+          "快关火时迅速打下一个鸡蛋滑散，与肉酱及意面拌匀焖两分钟，自制极饱腹的简易意面便出锅了。"
+        ],
+        cost: "$5.20 AUD"
+      }
+    ];
+  } else if (origLower.includes("vegetable") || origLower.includes("green") || origLower.includes("cabbage") || origLower.includes("菜") || origLower.includes("青菜") || origLower.includes("白菜")) {
+    ingredients = ["大白菜/包菜", "大蒜/干辣椒", "豆腐/鸡蛋", "超市挂面"];
+    recipes = [
+      {
+        name: "省气快手蒜香手撕包菜 (Quick Garlic Hand-Torn Cabbage)",
+        steps: [
+          "手撕包菜（撕成片状吃起来更爽脆，茎叶分离），大蒜切碎准备。",
+          "锅烧至极热下底油，下大蒜、辣椒和粗茎叶大火爆香颠炒，随后倒入剩下的包菜叶。",
+          "沿着炒锅锅边淋入一圈黑醋和鲜生抽，大火翻炒 15 秒（一定要快，锁住汁水和脆感）即可出锅。"
+        ],
+        cost: "$2.50 AUD"
+      },
+      {
+        name: "元气黄金白菜豆腐煎蛋煲 (Comforting Tofu Cabbage Egg Soup)",
+        steps: [
+          "将超市 $2 AUD 基础嫩豆腐切块，白菜切丝。",
+          "热油在平底锅里两面多煎一下鸡蛋，煎成边缘微焦的金黄荷包蛋并切成大块。",
+          "锅里注入冷水，倒入煎蛋、豆腐和白菜大火煮滚，直至汤色呈现完美的奶白色，撒入盐和胡椒就可以喝上热气腾腾的暖胃餐汤了。"
+        ],
+        cost: "$3.50 AUD"
+      }
+    ];
+  }
+
+  const savingComparison = "【留学生自炊大省特省】在本地叫一单外送 UberEats 或 HungryPanda，连配料、税和昂贵的运送费，随随便便需要花费 $25-$35 AUD。如果您选择利用以上这些基础超市原料在厨房自煮，支出最多不超过 $5 AUD 且只需 10 分钟！相当于您每自煮一单，就净省了近 $20+ AUD，这笔辛苦钱相当于澳洲法定兼职打工少吃好长一小时的苦头，极其超值健康！";
+
+  return {
+    ingredients,
+    recipes,
+    savingComparison
+  };
+}
+
 // ==========================================
 // UTILITY HELPERS FOR AI RESILIENCE
 // ==========================================
@@ -579,14 +992,16 @@ async function generateWithRetry(aiClient: any, method: 'generateContent' | 'gen
 // ==========================================
 
 app.post("/api/analyze-bill", upload.single("image"), async (req, res) => {
+  let activeCase = "";
+  let originalName = "";
   try {
     const file = req.file;
     if (!file) {
       return res.status(400).json({ error: "No image file provided" });
     }
 
-    const activeCase = (req.body.activeCase || "").toLowerCase();
-    const originalName = (file.originalname || "").toLowerCase();
+    activeCase = (req.body.activeCase || "").toLowerCase();
+    originalName = (file.originalname || "").toLowerCase();
     let matchedPresetKey = "";
 
     // Check if activeCase is explicitly sent, or detect using robust keywords to match standard presets
@@ -718,15 +1133,16 @@ Please analyze the image and output a JSON response matching this schema (DO NOT
     return res.json(result);
   } catch (error: any) {
     console.warn("Gemini bill analysis failed, activating robust fallback:", error?.message || error);
-    // Graceful fallback prevents UX crash on quota limit
-    return res.json(GENERAL_BILL_FALLBACK);
+    const dynamicAnalysis = generateDynamicOfflineBillAnalysis(originalName, activeCase);
+    return res.json(dynamicAnalysis);
   }
 });
 
 app.post("/api/analyze-shield", upload.single("image"), async (req, res) => {
+  let textInfo = "";
   try {
     const file = req.file;
-    const { textInfo } = req.body;
+    textInfo = req.body.textInfo || "";
 
     if (!file && !textInfo) {
       return res.status(400).json({ error: "No input provided" });
@@ -789,7 +1205,8 @@ Output JSON (DO NOT WRAP IN MARKDOWN BLOCK, JUST RAW JSON):
     return res.json(result);
   } catch (error: any) {
     console.warn("Gemini shield analysis failed, activating robust fallback:", error?.message || error);
-    return res.json(GENERAL_SHIELD_FALLBACK);
+    const dynamicFallback = generateDynamicOfflineShield(textInfo || "");
+    return res.json(dynamicFallback);
   }
 });
 
@@ -987,9 +1404,14 @@ const FALLBACK_BUDGET_RECIPE = {
 };
 
 app.post("/api/check-price", async (req, res) => {
+  let title = "";
+  let description = "";
+  let price = 0;
   try {
-    const { title, description, price } = req.body;
-    if (!title || price === undefined) {
+    title = req.body.title || "";
+    description = req.body.description || "";
+    price = Number(req.body.price) || 0;
+    if (!title || req.body.price === undefined) {
       return res.status(400).json({ error: "Missing required fields: title, price" });
     }
 
@@ -1039,13 +1461,17 @@ JSON 格式要求：
     return res.json(result);
   } catch (error: any) {
     console.error("Gemini check-price failed, falling back gracefully:", error?.message || error);
-    return res.json(FALLBACK_CHECK_PRICE);
+    const dynamicCheckPrice = generateDynamicOfflineCheckPrice(title, price, description);
+    return res.json(dynamicCheckPrice);
   }
 });
 
 app.post("/api/match-companion", async (req, res) => {
+  let description = "";
+  let companions: any[] = [];
   try {
-    const { description, companions } = req.body;
+    description = req.body.description || "";
+    companions = req.body.companions || [];
     if (!description) {
       return res.status(400).json({ error: "No description provided" });
     }
@@ -1105,16 +1531,19 @@ ${JSON.stringify(companions)}
     return res.json(result);
   } catch (error: any) {
     console.error("Gemini match-companion failed, fallback active:", error?.message || error);
-    return res.json(FALLBACK_MATCH_COMPANION);
+    const dynamicCompanion = generateDynamicOfflineMatchCompanion(description, companions);
+    return res.json(dynamicCompanion);
   }
 });
 
 app.post("/api/budget-recipe", upload.single("image"), async (req, res) => {
+  let originalname = "";
   try {
     const file = req.file;
     if (!file) {
       return res.status(400).json({ error: "No image file provided" });
     }
+    originalname = file.originalname || "";
 
     const aiClient = getAI();
     const prompt = `你是一个备受留学生喜爱的澳洲本地精打细算主厨厨神和冰箱魔法师。
@@ -1197,7 +1626,8 @@ app.post("/api/budget-recipe", upload.single("image"), async (req, res) => {
     return res.json(result);
   } catch (error: any) {
     console.error("Gemini budget-recipe failed, fallback active:", error?.message || error);
-    return res.json(FALLBACK_BUDGET_RECIPE);
+    const dynamicBudgetRecipe = generateDynamicOfflineBudgetRecipe(originalname);
+    return res.json(dynamicBudgetRecipe);
   }
 });
 
