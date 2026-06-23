@@ -5,7 +5,7 @@ import EmergencyAidDemo from './components/EmergencyAidDemo';
 import EcosystemHub from './components/EcosystemHub';
 import HistoryView from './components/HistoryView';
 import LegalHubDemo from './components/LegalHubDemo';
-import { Mail, Shield, AlertTriangle, Compass, LogIn, LogOut, Clock, Scale } from 'lucide-react';
+import { Mail, Shield, AlertTriangle, Compass, LogIn, LogOut, Clock, Scale, ListTodo } from 'lucide-react';
 
 import { initAuth, googleSignIn, logout } from './lib/firebase';
 import { sendEmail } from './lib/gmail';
@@ -57,7 +57,7 @@ export default function App() {
     { id: 'letter', label: '信件官', icon: <Mail size={24} /> },
     { id: 'shield', label: '防坑盾', icon: <Shield size={24} /> },
     { id: 'legalhub', label: '法援站', icon: <Scale size={24} /> },
-    { id: 'history', label: '历史', icon: <Clock size={24} /> },
+    { id: 'history', label: '我的案头', icon: <ListTodo size={24} /> },
     { id: 'emergency', label: '急救包', icon: <AlertTriangle size={24} /> },
     { id: 'roadmap', label: '生态', icon: <Compass size={24} /> }
   ];

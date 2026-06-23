@@ -1,7 +1,9 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Camera, Send, CheckCircle2, ArrowRight, Mail, AlignLeft, ExternalLink, Info, X, Eye, FileText, Globe } from 'lucide-react';
+import { Camera, Send, CheckCircle2, ArrowRight, Mail, AlignLeft, ExternalLink, Info, X, Eye, FileText, Globe, Calendar, Settings, Smile, UserCheck, Plus, Trash2 } from 'lucide-react';
 import { renderDocumentHTML } from './DocumentRenderer';
 import { User } from 'firebase/auth';
+import { db } from '../lib/firebase';
+import { saveExtractedTasks, KanbanTask } from '../lib/kanbanService';
 import Markdown from 'react-markdown';
 
 type AppState = 'upload' | 'analyzing' | 'result' | 'sent';
@@ -18,6 +20,37 @@ interface AnalysisResult {
     body: string;
     chineseTranslation: string;
   };
+  // New structured fields
+  documentType?: string;
+  issuer?: {
+    name: string;
+    isOfficial: boolean;
+  };
+  summaryPlain?: string;
+  deadline?: {
+    date: string;
+    time: string;
+    businessDaysLeft: number;
+  };
+  amount?: {
+    value: number;
+    currency: string;
+  };
+  consequenceIfIgnored?: string;
+  requiredActions?: {
+    step: string;
+    officialChannel: string;
+    url: string;
+  }[];
+  userRights?: {
+    claim: string;
+    legalBasis: string;
+    sourceUrl: string;
+  }[];
+  riskLevel?: 'low' | 'medium' | 'high' | string;
+  confidence?: 'low' | 'medium' | 'high' | string;
+  needsHumanConfirmation?: boolean;
+  disclaimer?: string;
 }
 
 const CASE_GUIDES: Record<string, {
@@ -144,6 +177,7 @@ interface LiveDemoProps {
 
 export default function LiveDemo({ user, accessToken, onLogin, onLogout, onSendEmail }: LiveDemoProps) {
   const [appState, setAppState] = useState<AppState>('upload');
+  const [claimMode, setClaimMode] = useState<'single' | 'cross'>('single');
   const [file, setFile] = useState<File | null>(null);
   const [filePreview, setFilePreview] = useState<string | null>(null);
   const [analysis, setAnalysis] = useState<AnalysisResult | null>(null);
@@ -154,11 +188,106 @@ export default function LiveDemo({ user, accessToken, onLogin, onLogout, onSendE
   const [isSending, setIsSending] = useState(false);
   const [showTranslation, setShowTranslation] = useState(false);
   
+  // User Profile States for Personalized Memory
+  const [profileVisaType, setProfileVisaType] = useState('500 student visa');
+  const [profileSchool, setProfileSchool] = useState('');
+  const [profileLeaseKeyTerms, setProfileLeaseKeyTerms] = useState('');
+  const [profileAdditionalDetails, setProfileAdditionalDetails] = useState('');
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
+  const [profileSaveSuccess, setProfileSaveSuccess] = useState(false);
+  const [showProfileWidget, setShowProfileWidget] = useState(false);
+
+  // Load user profile on mount or user change
+  useEffect(() => {
+    const loadProfile = async () => {
+      // First try localStorage
+      const local = localStorage.getItem('serene_user_profile');
+      if (local) {
+        try {
+          const data = JSON.parse(local);
+          setProfileVisaType(data.visaType || '500 student visa');
+          setProfileSchool(data.school || '');
+          setProfileLeaseKeyTerms(data.leaseKeyTerms || '');
+          setProfileAdditionalDetails(data.additionalDetails || '');
+        } catch (e) {
+          console.error("Local profile parse failed", e);
+        }
+      }
+
+      // If user is logged in, sync from Firestore
+      if (user) {
+        try {
+          const { doc, getDoc } = await import('firebase/firestore');
+          const docRef = doc(db, 'userProfiles', user.uid);
+          const docSnap = await getDoc(docRef);
+          if (docSnap.exists()) {
+            const data = docSnap.data();
+            setProfileVisaType(data.visaType || '500 student visa');
+            setProfileSchool(data.school || '');
+            setProfileLeaseKeyTerms(data.leaseKeyTerms || '');
+            setProfileAdditionalDetails(data.additionalDetails || '');
+            // update local copy
+            localStorage.setItem('serene_user_profile', JSON.stringify(data));
+          }
+        } catch (error) {
+          console.error("Error loading profile from Firestore:", error);
+        }
+      }
+    };
+    loadProfile();
+  }, [user]);
+
+  const handleSaveProfile = async () => {
+    setIsSavingProfile(true);
+    setProfileSaveSuccess(false);
+    const profileData = {
+      uid: user?.uid || 'guest',
+      visaType: profileVisaType,
+      school: profileSchool,
+      leaseKeyTerms: profileLeaseKeyTerms,
+      additionalDetails: profileAdditionalDetails,
+      updatedAt: Date.now()
+    };
+
+    // Save to localStorage
+    localStorage.setItem('serene_user_profile', JSON.stringify(profileData));
+
+    // If logged in, persist securely to Firestore
+    if (user) {
+      try {
+        const { doc, setDoc } = await import('firebase/firestore');
+        const docRef = doc(db, 'userProfiles', user.uid);
+        await setDoc(docRef, profileData);
+        console.log("Profile synchronized with Firestore successfully.");
+      } catch (error) {
+        console.error("Failed to synchronize profile with Firestore:", error);
+      }
+    }
+
+    setIsSavingProfile(false);
+    setProfileSaveSuccess(true);
+    setTimeout(() => {
+      setProfileSaveSuccess(false);
+    }, 2500);
+  };
+  
   // New States for HD Previews, active presets, and "More Info"
   const [activeCase, setActiveCase] = useState<'fine' | 'coe' | 'bond' | 'plagiarism' | 'noise' | 'utility' | null>(null);
   const [showDocModal, setShowDocModal] = useState(false);
+  const [kanbanTasks, setKanbanTasks] = useState<{ id: string; step: string; status: 'todo' | 'done'; channel?: string; url?: string }[]>([]);
   
+  // Cross mode states
+  const [crossFileA, setCrossFileA] = useState<File | null>(null);
+  const [crossPreviewA, setCrossPreviewA] = useState<string | null>(null);
+  const [crossFileB, setCrossFileB] = useState<File | null>(null);
+  const [crossPreviewB, setCrossPreviewB] = useState<string | null>(null);
+  const [activeCrossPreset, setActiveCrossPreset] = useState<'bond_cross' | null>(null);
+  const [crossAnalysis, setCrossAnalysis] = useState<any | null>(null);
+  const [currentAgentStep, setCurrentAgentStep] = useState(1);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const crossFileInputRefA = useRef<HTMLInputElement>(null);
+  const crossFileInputRefB = useRef<HTMLInputElement>(null);
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
@@ -167,6 +296,28 @@ export default function LiveDemo({ user, accessToken, onLogin, onLogout, onSendE
       setFilePreview(URL.createObjectURL(selectedFile));
       setActiveCase(null); // Clear preset case when manually uploading
     }
+  };
+
+  const handleCrossFileSelectA = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      const selectedFile = e.target.files[0];
+      setCrossFileA(selectedFile);
+      setCrossPreviewA(URL.createObjectURL(selectedFile));
+      setActiveCrossPreset(null);
+    }
+  };
+
+  const handleCrossFileSelectB = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      const selectedFile = e.target.files[0];
+      setCrossFileB(selectedFile);
+      setCrossPreviewB(URL.createObjectURL(selectedFile));
+      setActiveCrossPreset(null);
+    }
+  };
+
+  const toggleTaskStatus = (id: string) => {
+    setKanbanTasks(prev => prev.map(t => t.id === id ? { ...t, status: t.status === 'todo' ? 'done' : 'todo' } : t));
   };
 
   const loadExample = async (type: 'fine' | 'coe' | 'bond' | 'plagiarism' | 'noise' | 'utility') => {
@@ -269,47 +420,148 @@ export default function LiveDemo({ user, accessToken, onLogin, onLogout, onSendE
   };
 
   const submitForAnalysis = async () => {
-    if (!file) return;
-    setAppState('analyzing');
-    
-    try {
-      const formData = new FormData();
-      formData.append('image', file);
-      if (activeCase) {
-        formData.append('activeCase', activeCase);
-      }
+    if (claimMode === 'single') {
+      if (!file) return;
+      setAppState('analyzing');
+      try {
+        const formData = new FormData();
+        formData.append('image', file);
+        if (activeCase) {
+          formData.append('activeCase', activeCase);
+        }
+        
+        // Append user profile for personalized memory context
+        formData.append('visaType', profileVisaType);
+        formData.append('school', profileSchool);
+        formData.append('leaseKeyTerms', profileLeaseKeyTerms);
+        formData.append('additionalDetails', profileAdditionalDetails);
 
-      const res = await fetch('/api/analyze-bill', {
-        method: 'POST',
-        body: formData
-      });
-      
-      if (!res.ok) throw new Error('Analysis failed');
-      
-      const data: AnalysisResult = await res.json();
-      setAnalysis(data);
-      setDraftBody(data.englishDraft.body);
-      if (data.englishDraft.recipientEmail) {
-        setRecipient(data.englishDraft.recipientEmail);
+        const res = await fetch('/api/analyze-bill', {
+          method: 'POST',
+          body: formData
+        });
+        
+        if (!res.ok) throw new Error('Analysis failed');
+        
+        const data: AnalysisResult = await res.json();
+        setAnalysis(data);
+        setDraftBody(data.englishDraft.body);
+        if (data.englishDraft.recipientEmail) {
+          setRecipient(data.englishDraft.recipientEmail);
+        }
+        setCurrentTranslation(data.englishDraft.chineseTranslation);
+        
+        // Populate and save persistent kanban tasks across all letters
+        const tasksToSave = data.requiredActions && Array.isArray(data.requiredActions) 
+          ? data.requiredActions 
+          : (data.actionPlan && Array.isArray(data.actionPlan) 
+              ? data.actionPlan.map(act => ({ step: act })) 
+              : []);
+        
+        if (tasksToSave.length > 0) {
+          const finalSubject = data.englishDraft?.subject || (activeCase ? `对线案例 - ${activeCase}` : '未知公来函');
+          const savedTasks = await saveExtractedTasks(
+            tasksToSave, 
+            finalSubject, 
+            data.deadline?.date,
+            data.riskLevel
+          );
+          setKanbanTasks(savedTasks.map(t => ({
+            id: t.id,
+            step: t.title,
+            status: t.status,
+            channel: t.channel,
+            url: t.url
+          })));
+        } else {
+          setKanbanTasks([]);
+        }
+
+        setAppState('result');
+        
+        // Save to draft history
+        const currentHistoryStr = localStorage.getItem('serene_draft_history');
+        const history = currentHistoryStr ? JSON.parse(currentHistoryStr) : [];
+        history.push({
+          id: Date.now().toString(),
+          timestamp: Date.now(),
+          subject: data.englishDraft.subject,
+          body: data.englishDraft.body,
+          recipientEmail: data.englishDraft.recipientEmail || ''
+        });
+        localStorage.setItem('serene_draft_history', JSON.stringify(history));
+      } catch (err) {
+        console.error(err);
+        alert('解析失败，请重试');
+        setAppState('upload');
       }
-      setCurrentTranslation(data.englishDraft.chineseTranslation);
-      setAppState('result');
-      
-      // Save to history
-      const currentHistoryStr = localStorage.getItem('serene_draft_history');
-      const history = currentHistoryStr ? JSON.parse(currentHistoryStr) : [];
-      history.push({
-        id: Date.now().toString(),
-        timestamp: Date.now(),
-        subject: data.englishDraft.subject,
-        body: data.englishDraft.body,
-        recipientEmail: data.englishDraft.recipientEmail || ''
-      });
-      localStorage.setItem('serene_draft_history', JSON.stringify(history));
-    } catch (err) {
-      console.error(err);
-      alert('解析失败，请重试');
-      setAppState('upload');
+    } else {
+      // CROSS MODE CO-OBJECTION
+      if (!crossFileA && !crossFileB && !activeCrossPreset) {
+        alert("请上传租房合同及扣款声明，或者载入高能大招演示。");
+        return;
+      }
+      setAppState('analyzing');
+      try {
+        const formData = new FormData();
+        if (crossFileA) formData.append('images', crossFileA);
+        if (crossFileB) formData.append('images', crossFileB);
+        if (activeCrossPreset) {
+          formData.append('activeCrossPreset', activeCrossPreset);
+        }
+        
+        // Append user profile for personalized memory context
+        formData.append('visaType', profileVisaType);
+        formData.append('school', profileSchool);
+        formData.append('leaseKeyTerms', profileLeaseKeyTerms);
+        formData.append('additionalDetails', profileAdditionalDetails);
+
+        const res = await fetch('/api/cross-reference', {
+          method: 'POST',
+          body: formData
+        });
+        
+        if (!res.ok) throw new Error('Cross reference analysis failed');
+        
+        const data = await res.json();
+        setCrossAnalysis(data);
+        
+        // Also map some draft fields so standard email modal can function
+        setDraftBody(data.englishDraft.body);
+        setRecipient(data.englishDraft.recipientEmail || 'claims@horizonresidential.com.au');
+        setCurrentTranslation(data.englishDraft.chineseTranslation);
+        
+        // Populate and save persistent kanban tasks across all letters under unified store
+        if (data.disputableItems && Array.isArray(data.disputableItems)) {
+          const crossTasks = data.disputableItems.map((act: any) => ({
+            step: `抗辩不合理扣项: ${act.name}`,
+            officialChannel: 'VCAT和RTBA仲裁处',
+            url: 'https://www.consumer.vic.gov.au/housing/renting'
+          }));
+          const finalSubject = data.englishDraft?.subject || '退房租房押金争议';
+          const savedTasks = await saveExtractedTasks(
+            crossTasks,
+            finalSubject,
+            '2026-07-10', // estimate
+            'high' // riskLevel
+          );
+          setKanbanTasks(savedTasks.map(t => ({
+            id: t.id,
+            step: t.title,
+            status: t.status,
+            channel: t.channel,
+            url: t.url
+          })));
+        } else {
+          setKanbanTasks([]);
+        }
+
+        setAppState('result');
+      } catch (err) {
+        console.error(err);
+        alert('交叉核验对线审查失败，请重试');
+        setAppState('upload');
+      }
     }
   };
 
@@ -378,6 +630,50 @@ export default function LiveDemo({ user, accessToken, onLogin, onLogout, onSendE
     return () => clearTimeout(timeoutId);
   }, [draftBody, appState, analysis]);
 
+  useEffect(() => {
+    if (appState === 'analyzing') {
+      setCurrentAgentStep(1);
+      const interval = setInterval(() => {
+        setCurrentAgentStep(prev => {
+          if (prev < 5) return prev + 1;
+          clearInterval(interval);
+          return prev;
+        });
+      }, 1300);
+      return () => clearInterval(interval);
+    }
+  }, [appState]);
+
+  const downloadICS = (dateStr: string, title: string, details: string) => {
+    if (!dateStr) return;
+    const yearStr = dateStr.replace(/-/g, '');
+    const start = `${yearStr}T100000`;
+    const end = `${yearStr}T110000`;
+    
+    const icsLines = [
+      'BEGIN:VCALENDAR',
+      'VERSION:2.0',
+      'PRODID:-//Serene AI Services//EN',
+      'BEGIN:VEVENT',
+      'UID:' + Date.now() + '@serene.ai',
+      'DTSTAMP:' + new Date().toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z',
+      'DTSTART;TZID=Australia/Melbourne:' + start,
+      'DTEND;TZID=Australia/Melbourne:' + end,
+      'SUMMARY:' + title,
+      'DESCRIPTION:' + details.replace(/\n/g, '\\n'),
+      'END:VEVENT',
+      'END:VCALENDAR'
+    ].join('\r\n');
+    
+    const blob = new Blob([icsLines], { type: 'text/calendar;charset=utf-8' });
+    const element = document.createElement('a');
+    element.href = URL.createObjectURL(blob);
+    element.download = `${title.replace(/\s+/g, '_')}_deadline.ics`;
+    document.body.appendChild(element);
+    element.click();
+    document.body.removeChild(element);
+  };
+
   const handleSend = () => {
     if (!analysis) return;
     const url = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(recipient)}&su=${encodeURIComponent(analysis.englishDraft.subject)}&body=${encodeURIComponent(draftBody)}`;
@@ -391,6 +687,12 @@ export default function LiveDemo({ user, accessToken, onLogin, onLogout, onSendE
     setFilePreview(null);
     setAnalysis(null);
     setActiveCase(null);
+    setCrossFileA(null);
+    setCrossPreviewA(null);
+    setCrossFileB(null);
+    setCrossPreviewB(null);
+    setActiveCrossPreset(null);
+    setCrossAnalysis(null);
   };
 
   return (
@@ -409,6 +711,108 @@ export default function LiveDemo({ user, accessToken, onLogin, onLogout, onSendE
              
              {appState === 'upload' && (
                 <div className="flex-1 flex flex-col justify-center animate-in fade-in zoom-in-95 duration-500">
+                  
+                  {/* Personalized AI Co-pilot Profile Widget */}
+                  <div className="mb-8 bg-[#FAF6EE]/70 border border-amber-200/50 rounded-3xl p-5 shadow-sm">
+                    <div className="flex items-center justify-between flex-wrap gap-4">
+                      <div className="flex items-start gap-3">
+                        <div className="p-2.5 bg-[#EAB252]/10 text-[#EAB252] rounded-2xl shrink-0 mt-0.5">
+                          <Settings size={20} className="animate-spin" style={{ animationDuration: '6s' }} />
+                        </div>
+                        <div>
+                          <h4 className="text-sm font-extrabold text-[#1C362B] flex items-center gap-2">
+                            留学生专属上下文记忆副驾
+                            <span className="text-[10px] uppercase font-mono bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded-full font-bold">ACTIVE</span>
+                          </h4>
+                          <p className="text-xs text-gray-400 mt-1 leading-normal">
+                            当前身份特征：<strong className="text-gray-700">{profileVisaType}</strong> {profileSchool && <span className="mx-1">|</span>} {profileSchool && <span>就读: <strong className="text-gray-700">{profileSchool}</strong></span>} {profileLeaseKeyTerms && <span className="mx-1">|</span>} {profileLeaseKeyTerms && <span>租期: <strong className="text-gray-700">{profileLeaseKeyTerms}</strong></span>}
+                          </p>
+                        </div>
+                      </div>
+                      <button 
+                        onClick={() => setShowProfileWidget(!showProfileWidget)}
+                        className="text-xs bg-[#1C362B] text-white hover:bg-neutral-800 px-4 py-2.5 rounded-xl font-bold transition-all shadow-sm flex items-center gap-1.5 cursor-pointer"
+                      >
+                        {showProfileWidget ? "收起档案" : "修改/同步专属档案"}
+                        <ArrowRight size={13} className={`transition-transform duration-300 ${showProfileWidget ? 'rotate-90' : ''}`} />
+                      </button>
+                    </div>
+
+                    {showProfileWidget && (
+                      <div className="mt-5 border-t border-gray-150/50 pt-5 animate-in fade-in slide-in-from-top-2 duration-300">
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                          <div className="flex flex-col gap-1.5">
+                            <label className="text-[10px] font-black tracking-wider text-gray-400 uppercase">学签/签证类型</label>
+                            <input 
+                              type="text" 
+                              value={profileVisaType} 
+                              onChange={(e) => setProfileVisaType(e.target.value)} 
+                              placeholder="例如: 500 student visa"
+                              className="w-full bg-white border border-gray-200 rounded-xl px-3.5 py-2.5 text-xs text-gray-800 focus:outline-none focus:ring-2 ring-[#1C362B]/10 hover:border-gray-300 font-bold"
+                            />
+                          </div>
+                          <div className="flex flex-col gap-1.5">
+                            <label className="text-[10px] font-black tracking-wider text-gray-400 uppercase">就读院校/专业团队</label>
+                            <input 
+                              type="text" 
+                              value={profileSchool} 
+                              onChange={(e) => setProfileSchool(e.target.value)} 
+                              placeholder="例如: ANU, Master of Applied Data"
+                              className="w-full bg-white border border-gray-200 rounded-xl px-3.5 py-2.5 text-xs text-gray-800 focus:outline-none focus:ring-2 ring-[#1C362B]/10 hover:border-gray-300 font-bold"
+                            />
+                          </div>
+                          <div className="flex flex-col gap-1.5">
+                            <label className="text-[10px] font-black tracking-wider text-gray-400 uppercase">租房合约关键条款</label>
+                            <input 
+                              type="text" 
+                              value={profileLeaseKeyTerms} 
+                              onChange={(e) => setProfileLeaseKeyTerms(e.target.value)} 
+                              placeholder="例如: lease ends 30 June"
+                              className="w-full bg-white border border-gray-200 rounded-xl px-3.5 py-2.5 text-xs text-gray-800 focus:outline-none focus:ring-2 ring-[#1C362B]/10 hover:border-gray-300 font-bold"
+                            />
+                          </div>
+                          <div className="flex flex-col gap-1.5">
+                            <label className="text-[10px] font-black tracking-wider text-gray-400 uppercase">额外背景特征 / 地址</label>
+                            <input 
+                              type="text" 
+                              value={profileAdditionalDetails} 
+                              onChange={(e) => setProfileAdditionalDetails(e.target.value)} 
+                              placeholder="例如: 租住在 Flinder Lane 等"
+                              className="w-full bg-white border border-gray-200 rounded-xl px-3.5 py-2.5 text-xs text-gray-800 focus:outline-none focus:ring-2 ring-[#1C362B]/10 hover:border-gray-300 font-bold"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="mt-4 flex items-center justify-between border-t border-gray-150/20 pt-4 flex-wrap gap-2">
+                          <p className="text-[11px] text-gray-400 flex items-center gap-1.5">
+                            <Smile size={13} className="text-[#EAB252]" />
+                            {user ? (
+                              <span className="text-emerald-600 font-bold flex items-center gap-1"><UserCheck size={12}/> 已通过 Firebase 账户同步至云端数据库</span>
+                            ) : (
+                              <span>您暂未登录。已保存在本地，登录后可同步至云端数据库保存</span>
+                            )}
+                          </p>
+                          <div className="flex items-center gap-2">
+                            <button 
+                              onClick={handleSaveProfile}
+                              disabled={isSavingProfile}
+                              className="text-xs bg-[#EAB252] text-white hover:bg-amber-600 disabled:opacity-50 px-5 py-2.5 rounded-xl font-bold transition-all shadow-sm flex items-center gap-1 cursor-pointer"
+                            >
+                              {isSavingProfile ? "保存并同步中..." : "保存并更新记忆副驾"}
+                            </button>
+                          </div>
+                        </div>
+
+                        {profileSaveSuccess && (
+                          <div className="mt-3 text-xs bg-emerald-50 text-emerald-800 p-2.5 rounded-xl border border-emerald-150 flex items-center gap-1.5 font-bold animate-in fade-in zoom-in-95 duration-200">
+                            <CheckCircle2 size={14} className="text-emerald-600 animate-bounce" />
+                            记忆载入成功！后续分析将全自动引入您的个人背景进行一对一定向抗诉诊断。
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
                   <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-stretch">
                     
                     {/* Left Column: Image/Canvas Preview Box on the Left */}
@@ -629,20 +1033,230 @@ export default function LiveDemo({ user, accessToken, onLogin, onLogout, onSendE
              )}
 
              {appState === 'analyzing' && (
-                <div className="flex-1 flex flex-col items-center justify-center text-center animate-in fade-in duration-500">
-                  <div className="w-16 h-16 border-4 border-[#1C362B]/10 border-t-[#1C362B] rounded-full animate-spin mb-6"></div>
-                  <h3 className="text-xl font-bold text-gray-900 mb-2">正在用中文为你解读</h3>
-                  <p className="text-gray-500 text-sm">联网核实相关条款中...</p>
-               </div>
+                <div className="flex-1 flex flex-col items-center justify-center py-8 px-4 max-w-xl mx-auto animate-in fade-in duration-500">
+                  <div className="relative mb-6 flex items-center justify-center">
+                    <div className="w-14 h-14 border-4 border border-emerald-100 border-t-emerald-600 rounded-full animate-spin"></div>
+                    <span className="absolute text-emerald-700 font-extrabold text-[10px] uppercase font-sans tracking-tight">R-AI</span>
+                  </div>
+                  
+                  <h3 className="text-lg font-extrabold text-gray-950 mb-1 flex items-center gap-1.5 justify-center">
+                    <span>⭐ Agentic 案件深度处理链巡航中</span>
+                  </h3>
+                  <p className="text-gray-500 text-xs mb-6 text-center leading-relaxed">
+                    正在执行 5 步自动闭环法务抗诉：为您编排最强合规信号。
+                  </p>
+                  
+                  <div className="w-full space-y-3 text-left">
+                    {[
+                      {
+                        step: 1,
+                        title: "Step 1: 🔍 读画/扫描 → 结构化主干大纲抽取",
+                        success: "成功录入关键信息、起草日期与收账金额/罚金主体。",
+                        pending: "正在读取票据/公文/合同核心字段..."
+                      },
+                      {
+                        step: 2,
+                        title: "Step 2: ⚖️ Grounding 深度对齐澳洲最新法规",
+                        success: "成功完成租务法/交通法合理磨损条款与 VCAT 民事审判历史判例对齐。",
+                        pending: "正在联网调取本地民事审裁条例与争议仲裁法源..."
+                      },
+                      {
+                        step: 3,
+                        title: "Step 3: ✍️ 智能起草中英双语对线回信草稿",
+                        success: "成功架构具有‘对线意图标注’的书面正式抗辩信件。",
+                        pending: "正在分析双方合同条款冲突并构思最高效驳回话术..."
+                      },
+                      {
+                        step: 4,
+                        title: "Step 4: 📅 自动编码排版维权死线日历事件",
+                        success: "成功核算行政纠纷诉讼死线时区并配置 .ics 文件一键写入。",
+                        pending: "正在编码日历日程以防止诉讼效期失效..."
+                      },
+                      {
+                        step: 5,
+                        title: "Step 5: 📧 一键极速直达官方 / 中介 Gmail 信道",
+                        success: "极速预置 Gmail 深链及自动发收口径，即刻呼之欲出！",
+                        pending: "准备预热全能抗辩信道链接..."
+                      }
+                    ].map((item) => {
+                      const isActive = item.step === currentAgentStep;
+                      const isDone = item.step < currentAgentStep;
+                      return (
+                        <div 
+                          key={item.step} 
+                          className={`p-3.5 rounded-2.5xl border transition-all duration-300 ${isDone ? 'bg-emerald-50/50 border-emerald-200' : isActive ? 'bg-[#1C362B]/5 border-[#1C362B]/25 shadow-sm animate-pulse' : 'bg-gray-50/20 border-gray-100 opacity-45'}`}
+                        >
+                          <div className="flex items-center space-x-3">
+                            <div className="shrink-0">
+                              {isDone ? (
+                                <span className="w-5.5 h-5.5 rounded-full bg-emerald-500 text-white flex items-center justify-center text-xs font-bold font-sans">✓</span>
+                              ) : isActive ? (
+                                <span className="w-5.5 h-5.5 rounded-full bg-emerald-700 text-white flex items-center justify-center text-xs font-bold font-sans animate-spin">⟳</span>
+                              ) : (
+                                <span className="w-5.5 h-5.5 rounded-full bg-gray-200 text-gray-400 flex items-center justify-center text-xs font-bold font-sans">{item.step}</span>
+                              )}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <h4 className={`text-[11px] font-black tracking-wide ${isDone ? 'text-emerald-950' : isActive ? 'text-emerald-900' : 'text-gray-450'}`}>
+                                {item.title}
+                              </h4>
+                              <p className={`text-[10px] mt-0.5 leading-normal ${isDone ? 'text-emerald-800' : isActive ? 'text-emerald-750 font-bold' : 'text-gray-400'}`}>
+                                {isDone ? item.success : isActive ? item.pending : "排队待命..."}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
              )}
 
-             {appState === 'result' && analysis && (
+              {appState === 'result' && (claimMode === 'cross' ? !!crossAnalysis : !!analysis) && (
                <div className="flex-1 flex flex-col w-full h-full animate-in slide-in-from-bottom-4 duration-500">
-                 <button onClick={reset} className="text-xs font-bold text-gray-400 hover:text-gray-900 mb-4 self-start flex items-center space-x-1">
-                   <span>← 换一封信</span>
+                 <button onClick={reset} className="text-xs font-bold text-gray-400 hover:text-gray-900 mb-4 self-start flex items-center space-x-1 hover:underline">
+                   <span>← {claimMode === 'cross' ? '返回重新交叉核验' : '换一封信'}</span>
                  </button>
 
-                 <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-stretch flex-1">
+                 {claimMode === 'cross' && crossAnalysis ? (
+                   <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-stretch flex-1">
+                        {/* LEFT COLUMN: Disputable items list */}
+                        <div className="lg:col-span-6 flex flex-col bg-neutral-100/60 p-5 rounded-3xl border border-gray-200/50 max-h-[85vh] overflow-y-auto custom-scrollbar">
+                           <div className="text-[10px] font-black text-[#1C362B] tracking-wider uppercase mb-1">
+                             ⚖️ 交叉匹配合同条目冲突分析栏 (CROSS DISPUTE ITEMS)
+                           </div>
+                           <h3 className="text-sm font-extrabold text-gray-900 mb-4">
+                             共匹配识别出 <span className="text-red-650 text-base">{crossAnalysis.disputableItems.length}</span> 处严重违约或无理扣押标签：
+                           </h3>
+
+                           <div className="space-y-4">
+                             {crossAnalysis.disputableItems.map((item: any, i: number) => (
+                               <div key={i} className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm flex flex-col gap-3 hover:border-emerald-300 transition-colors">
+                                 <div className="flex justify-between items-start border-b border-gray-50 pb-2">
+                                   <span className="text-xs font-black text-gray-950 flex items-center gap-1">
+                                     <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse"></span>
+                                     {item.name}
+                                   </span>
+                                   <span className="text-xs bg-red-50 border border-red-150 inline-block text-red-700 px-2 py-0.5 rounded font-black font-mono">
+                                     -${item.amount} AUD
+                                   </span>
+                                 </div>
+                                 
+                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-[10px] text-gray-500 font-sans leading-relaxed">
+                                   <div className="bg-emerald-50/30 p-2.5 rounded-lg border border-emerald-100/50">
+                                     <p className="font-bold text-emerald-900 mb-1">Clause A 住宅契约条款或规范：</p>
+                                     <p>{item.clauseA}</p>
+                                   </div>
+                                   <div className="bg-red-50/20 p-2.5 rounded-lg border border-red-100/30">
+                                     <p className="font-bold text-red-900 mb-1">Clause B 索赔发票/罚缴单指控：</p>
+                                     <p>{item.clauseB}</p>
+                                   </div>
+                                 </div>
+
+                                 <div className="bg-amber-50/35 p-3 rounded-xl border border-amber-100/50 text-xs font-sans text-gray-700 leading-relaxed font-normal">
+                                   <p className="font-extrabold text-amber-900 flex items-center gap-1 mb-1">维权法源抗辩建议 (Strategy):</p>
+                                   <p>{item.negotiableReason}</p>
+                                 </div>
+
+                                 <div className="bg-neutral-50 p-2.5 rounded-xl border border-gray-150 text-[11px] font-mono font-medium text-gray-600">
+                                   <p className="font-bold text-gray-900 mb-0.5">💬 英文沟通回复模板 (Response Template):</p>
+                                   <p className="italic">"{item.advicePlain}"</p>
+                                 </div>
+                               </div>
+                             ))}
+                           </div>
+                        </div>
+
+                        {/* RIGHT COLUMN: Overal suggestions + draft with cal & email buttons */}
+                        <div className="lg:col-span-6 flex flex-col gap-6 overflow-y-auto pr-1 custom-scrollbar max-h-[85vh]">
+                           {/* Global strategy card */}
+                           <div className="bg-[#FFF4F2] p-5 rounded-3xl border border-[#FEE6E3]">
+                             <div className="text-[10px] font-bold text-[#FE6D5D] tracking-widest mb-2 uppercase flex items-center space-x-2">
+                               <span className="w-2 h-2 rounded-full bg-[#FE6D5D]"></span>
+                               <span>总体驳回对线核心策略 (Chief Negotiator Directive)</span>
+                             </div>
+                             <p className="text-gray-900 text-xs font-medium leading-relaxed mb-3">
+                               {crossAnalysis.recommendation}
+                             </p>
+                             <div className="bg-white/80 backdrop-blur-sm p-3.5 rounded-xl border border-white font-black text-[11px] text-[#D84C3E] flex items-center justify-between shadow-sm font-sans">
+                               <span>🎯 可安全挽回押金金额 (Total Recoverable Loss):</span>
+                               <span className="text-sm text-red-650 font-black font-mono">
+                                 ${crossAnalysis.disputableItems.reduce((acc: number, item: any) => acc + (item.amount || 0), 0)} AUD
+                                </span>
+                             </div>
+                           </div>
+
+                           {/* Intention and drafts */}
+                           <div className="bg-[#FAF9F5] p-5 rounded-3xl border border-gray-200 flex flex-col gap-4 font-sans">
+                             <div className="flex justify-between items-center border-b border-gray-100 pb-2">
+                               <span className="text-xs font-black text-gray-800 flex items-center gap-1">
+                                 📝 主力英文维权正式声明书 (Drafting Response Document)
+                               </span>
+                               <span className="text-[9px] bg-emerald-50 text-emerald-800 border border-emerald-100 px-2 py-0.5 rounded-full font-black">对线意图高度匹配</span>
+                             </div>
+
+                             <div className="text-[11px]/relaxed text-gray-500 bg-emerald-50/10 p-2.5 rounded-xl border border-emerald-150/40 font-normal">
+                               <span className="font-bold text-emerald-950">对线意图：</span>
+                               {crossAnalysis.englishDraft.intention}
+                             </div>
+
+                             <div className="flex flex-col gap-1">
+                               <label className="text-[10px] font-black uppercase text-gray-400">EMAIL SUBJECT (邮件主题)</label>
+                               <input readOnly type="text" value={crossAnalysis.englishDraft.subject} className="bg-white text-xs font-bold border border-gray-200 rounded-lg p-2 focus:outline-none" />
+                             </div>
+
+                             <div className="flex flex-col gap-1">
+                               <label className="text-[10px] font-black uppercase text-gray-400">EN DRAFT (英语抗诉正文)</label>
+                               <textarea 
+                                 value={draftBody}
+                                 onChange={(e) => setDraftBody(e.target.value)}
+                                 className="bg-white text-xs border border-gray-200 h-[220px] rounded-xl p-3 resize-none font-sans focus:outline-none focus:ring-1 focus:ring-[#1C362B] focus:border-[#1C362B] leading-relaxed select-text" 
+                               />
+                             </div>
+
+                             {crossAnalysis.englishDraft.chineseTranslation && (
+                               <div className="flex flex-col gap-1">
+                                 <label className="text-[10px] font-black uppercase text-gray-400">CN REFERENCE (中文直观对照大意)</label>
+                                 <div className="bg-gray-50 text-xs text-gray-600 border border-gray-100 rounded-xl p-3 max-h-[160px] overflow-y-auto leading-relaxed">
+                                   <Markdown>{crossAnalysis.englishDraft.chineseTranslation}</Markdown>
+                                 </div>
+                               </div>
+                             )}
+
+                             {/* ACTION TOOLS BOX: Step 4 and 5 */}
+                             <div className="border-t border-gray-150 pt-4 flex flex-col sm:flex-row gap-3">
+                               <button 
+                                 onClick={() => {
+                                   const dateStr = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+                                   downloadICS(
+                                     dateStr, 
+                                     "维州租务扣押争议 VCAT / RTBA 时效死线", 
+                                     `请注意，今日向中介 Horizon 提交了正式抗诉信件，依据 14 天法定答复时限，若对方无理回绝，请立即单方面发起 RTBA 索赔！时效届满截止日期：${dateStr}`
+                                   );
+                                 }}
+                                 className="flex-1 bg-white hover:bg-neutral-50 text-[#1C362B] border-2 border-[#1C362B]/35 font-extrabold text-xs py-3 rounded-xl flex items-center justify-center gap-1.5 transition-all shadow-sm cursor-pointer active:scale-95"
+                               >
+                                 <Calendar size={14} />
+                                 <span>一键载入法定抗辩日历事件 (.ics)</span>
+                               </button>
+
+                               <button 
+                                 onClick={() => {
+                                   const url = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(crossAnalysis.englishDraft.recipientEmail || 'claims@horizonresidential.com.au')}&su=${encodeURIComponent(crossAnalysis.englishDraft.subject)}&body=${encodeURIComponent(draftBody)}`;
+                                   window.open(url, '_blank');
+                                   setAppState('sent');
+                                 }}
+                                 className="flex-1 bg-[#1C362B] hover:bg-neutral-800 text-white font-extrabold text-xs py-3 px-4 rounded-xl flex items-center justify-center gap-1.5 transition-all shadow-md cursor-pointer active:scale-95"
+                               >
+                                 <Send size={14} />
+                                 <span>极速一键直达 Gmail 答复抗辩</span>
+                               </button>
+                             </div>
+                           </div>
+                        </div>
+                     </div>
+                 ) : (
+                   <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-stretch flex-1">
                    {/* Left Column: Side-by-side active original document preview */}
                    <div className="lg:col-span-5 flex flex-col bg-neutral-150/60 p-4 rounded-3xl border border-gray-150/50 max-h-[85vh] overflow-y-auto custom-scrollbar">
                      <div className="text-xs font-black text-gray-400 mb-2.5 uppercase tracking-wider flex justify-between items-center">
@@ -696,14 +1310,95 @@ export default function LiveDemo({ user, accessToken, onLogin, onLogout, onSendE
                  <div className="bg-[#F8F6F1] p-6 rounded-2xl mb-8 border border-[#EBE8E0]">
                     <div className="text-[10px] font-bold text-[#1C362B] tracking-widest mb-4 uppercase flex items-center space-x-2">
                        <span className="w-2 h-2 rounded-full bg-[#1C362B]"></span>
-                       <span>💡 下一步核心建议</span>
-                    </div>
-                    <ul className="space-y-4">
-                      {analysis.actionPlan.map((action, idx) => (
-                        <li key={idx} className="flex items-start space-x-3 text-sm text-gray-700 bg-white/50 p-3 rounded-xl">
-                          <CheckCircle2 size={18} className="text-[#1C362B] flex-shrink-0 mt-0.5" />
+                       <span>🚀 抗辩执行清单 (To-Do Checklist Kanban)</span>
+                     </div>
+                     {analysis.deadline && (
+                       <div className="bg-white p-4.5 rounded-2xl border border-gray-200/60 shadow-sm flex flex-col sm:flex-row items-center gap-4.5 mb-5 font-sans">
+                         <div className="w-16 h-16 shrink-0 rounded-2xl border border-red-200 overflow-hidden shadow-sm flex flex-col items-center bg-white">
+                           <div className="bg-red-500 text-white text-[9px] py-0.5 text-center w-full font-black tracking-widest uppercase">
+                             {(() => {
+                               const dStr = analysis.deadline?.date || "";
+                               if (dStr) {
+                                 const pts = dStr.split('-');
+                                 if (pts.length === 3) return `${parseInt(pts[1], 10)}月`;
+                               }
+                               return "时限";
+                             })()}
+                           </div>
+                           <div className="text-2xl font-black text-gray-800 my-auto">
+                             {(() => {
+                               const dStr = analysis.deadline?.date || "";
+                               if (dStr) {
+                                 const pts = dStr.split('-');
+                                 if (pts.length === 3) return pts[2];
+                               }
+                               return "⏰";
+                             })()}
+                           </div>
+                         </div>
+                         
+                         <div className="flex-1 text-center sm:text-left">
+                           <div className="flex flex-wrap justify-center sm:justify-start items-center gap-1.5">
+                             <span className={`text-[9px] font-black tracking-wider px-2 py-0.5 rounded-full uppercase font-mono bg-red-50 text-red-800`}>
+                               ⏰ 剩余 {analysis.deadline?.businessDaysLeft ?? 0} 天
+                             </span>
+                             {analysis.issuer?.isOfficial && (
+                               <span className="bg-[#1C362B]/10 text-[#1C362B] text-[8px] font-black px-1.5 py-0.5 rounded">
+                                 🏛️ 官方认证
+                               </span>
+                             )}
+                           </div>
+                           <h3 className="text-xs font-black text-gray-900 mt-1">抗诉截止日历：{analysis.deadline?.date}</h3>
+                           <p className="text-[10px] text-gray-400 font-mono leading-none mt-0.5">
+                             发函机构：{analysis.issuer?.name || "未知机构"}
+                           </p>
+                         </div>
+                       </div>
+                     )}
+                     
+                     {/* Progress bar */}
+                     {(() => {
+                       const completedCount = kanbanTasks.filter(t => t.status === 'done').length;
+                       const totalCount = kanbanTasks.length;
+                       const percentage = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0;
+                       return (
+                         <div className="mb-4 font-sans">
+                           <div className="flex justify-between items-center mb-1 text-[10px] font-black text-[#1C362B] tracking-wider uppercase">
+                             <span>申诉执行进度</span>
+                             <span>{completedCount}/{totalCount} 已完成 ({percentage}%)</span>
+                           </div>
+                           <div className="w-full bg-gray-200 h-1.5 rounded-full overflow-hidden border border-gray-100">
+                             <div className="bg-emerald-600 h-full transition-all duration-550" style={{ width: `${percentage}%` }} />
+                           </div>
+                         </div>
+                       );
+                     })()}
+                                         <ul className="space-y-4">
+                      {kanbanTasks.map((task, idx) => (
+                        <li key={task.id || idx} className={`flex items-start space-x-3 text-sm bg-white p-3.5 rounded-xl border transition-all duration-200 ${task.status === 'done' ? 'border-gray-200 opacity-60' : 'border-gray-200/80 hover:shadow-sm shadow-xs'}`}>
+                          <button 
+                            onClick={() => toggleTaskStatus(task.id)}
+                            className={`w-5 h-5 rounded-md border flex items-center justify-center shrink-0 mt-0.5 transition-all cursor-pointer ${
+                              task.status === 'done' 
+                                ? 'bg-[#1C362B] border-[#1C362B] text-white' 
+                                : 'border-gray-300 bg-white hover:border-[#1C362B]'
+                            }`}
+                          >
+                            {task.status === 'done' && <CheckCircle2 size={11} className="stroke-[3]" />}
+                          </button>
                           <div className="markdown-body -mt-0.5">
-                             <Markdown>{action}</Markdown>
+                             <p className={`text-xs font-bold leading-snug ${task.status === 'done' ? 'line-through text-gray-400 font-sans' : 'text-gray-800 font-sans'}`}>{task.step}</p>
+                             {task.url && (
+                               <a 
+                                 href={task.url} 
+                                 target="_blank" 
+                                 rel="noopener noreferrer" 
+                                 className="inline-flex items-center gap-1 text-[10px] font-black text-emerald-700 hover:text-red-500 mt-1.5 transition-all bg-emerald-50 px-2 py-0.5 rounded-md"
+                               >
+                                 <span>🌐 去官网对线：{task.channel || "在线申诉纠纷平台"}</span>
+                                 <ExternalLink size={9} className="shrink-0" />
+                               </a>
+                             )}
                           </div>
                         </li>
                       ))}
@@ -726,6 +1421,40 @@ export default function LiveDemo({ user, accessToken, onLogin, onLogout, onSendE
                     </div>
 
                     <div className="flex flex-col space-y-4 mb-6">
+                     {/* Part 4: Verified Legal/Grounding Sources Display next to email strategy intent */}
+                     {analysis.userRights && analysis.userRights.length > 0 && (
+                       <div className="bg-emerald-50/15 border border-emerald-200 p-5 rounded-2xl mb-6 flex flex-col gap-3 font-sans shadow-sm">
+                         <div className="text-[10px] font-black text-[#1C362B] tracking-wider uppercase flex items-center gap-1.5 leading-none">
+                           <Globe size={13} className="text-emerald-700 shrink-0"/>
+                           <span>⚖️ 基石：申诉法定依据（真 Grounding 官方信源支撑）</span>
+                         </div>
+                         <div className="divide-y divide-emerald-100/60 flex flex-col">
+                           {analysis.userRights.map((right, index) => (
+                             <div key={index} className="py-2.5 first:pt-0 last:pb-0 flex flex-col gap-1 text-xs">
+                               <p className="font-bold text-gray-900 leading-normal">
+                                 💡 {right.claim}
+                               </p>
+                               <div className="flex flex-wrap items-center gap-2 mt-1">
+                                 <span className="text-[10px] bg-red-50 text-red-800 border border-red-150 px-1.5 py-0.5 rounded font-bold font-sans">
+                                   依据：{right.legalBasis}
+                                 </span>
+                                 {right.sourceUrl && (
+                                   <a 
+                                     href={right.sourceUrl} 
+                                     target="_blank" 
+                                     rel="noopener noreferrer" 
+                                     className="inline-flex items-center gap-0.5 text-[#1C362B] font-black hover:text-[#FE6D5D] hover:underline whitespace-nowrap"
+                                   >
+                                     <span>🔗 查看官方原文条款</span>
+                                     <ExternalLink size={9} />
+                                   </a>
+                                 )}
+                               </div>
+                             </div>
+                           ))}
+                         </div>
+                       </div>
+                     )}
                        <div className="flex items-center space-x-3 bg-gray-50/80 p-3 rounded-xl border border-gray-100 focus-within:border-gray-300 focus-within:bg-white transition-colors">
                           <span className="text-xs font-bold text-gray-400 whitespace-nowrap uppercase tracking-wider w-12">发给</span>
                           <input 
@@ -794,6 +1523,7 @@ export default function LiveDemo({ user, accessToken, onLogin, onLogout, onSendE
                   </div>
                 </div>
               </div>
+              )}
             </div>
              )}
 
