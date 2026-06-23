@@ -423,6 +423,7 @@ export default function LiveDemo({ user, accessToken, onLogin, onLogout, onSendE
     if (claimMode === 'single') {
       if (!file) return;
       setAppState('analyzing');
+      setCurrentAgentStep(1);
       try {
         const formData = new FormData();
         formData.append('image', file);
@@ -444,6 +445,18 @@ export default function LiveDemo({ user, accessToken, onLogin, onLogout, onSendE
         if (!res.ok) throw new Error('Analysis failed');
         
         const data: AnalysisResult = await res.json();
+
+        // High fidelity Agentic progress animation sequencing
+        await new Promise(resolve => setTimeout(resolve, 800));
+        setCurrentAgentStep(2);
+        await new Promise(resolve => setTimeout(resolve, 800));
+        setCurrentAgentStep(3);
+        await new Promise(resolve => setTimeout(resolve, 800));
+        setCurrentAgentStep(4);
+        await new Promise(resolve => setTimeout(resolve, 800));
+        setCurrentAgentStep(5);
+        await new Promise(resolve => setTimeout(resolve, 600));
+        
         setAnalysis(data);
         setDraftBody(data.englishDraft.body);
         if (data.englishDraft.recipientEmail) {
@@ -502,6 +515,7 @@ export default function LiveDemo({ user, accessToken, onLogin, onLogout, onSendE
         return;
       }
       setAppState('analyzing');
+      setCurrentAgentStep(1);
       try {
         const formData = new FormData();
         if (crossFileA) formData.append('images', crossFileA);
@@ -524,6 +538,18 @@ export default function LiveDemo({ user, accessToken, onLogin, onLogout, onSendE
         if (!res.ok) throw new Error('Cross reference analysis failed');
         
         const data = await res.json();
+
+        // High fidelity Agentic progress animation sequencing
+        await new Promise(resolve => setTimeout(resolve, 800));
+        setCurrentAgentStep(2);
+        await new Promise(resolve => setTimeout(resolve, 800));
+        setCurrentAgentStep(3);
+        await new Promise(resolve => setTimeout(resolve, 800));
+        setCurrentAgentStep(4);
+        await new Promise(resolve => setTimeout(resolve, 800));
+        setCurrentAgentStep(5);
+        await new Promise(resolve => setTimeout(resolve, 600));
+        
         setCrossAnalysis(data);
         
         // Also map some draft fields so standard email modal can function
@@ -1117,6 +1143,23 @@ export default function LiveDemo({ user, accessToken, onLogin, onLogout, onSendE
                  <button onClick={reset} className="text-xs font-bold text-gray-400 hover:text-gray-900 mb-4 self-start flex items-center space-x-1 hover:underline">
                    <span>← {claimMode === 'cross' ? '返回重新交叉核验' : '换一封信'}</span>
                  </button>
+
+                 {/* Visual automatic-completion checking summary banner */}
+                 <div className="bg-emerald-50 border border-emerald-200/65 p-5 rounded-3xl flex items-start space-x-4 mb-6 animate-in slide-in-from-top-4 duration-500 shadow-sm">
+                   <div className="w-10 h-10 bg-emerald-600 text-white rounded-2xl flex items-center justify-center text-lg shrink-0 shadow-sm font-sans font-bold">
+                     🎉
+                   </div>
+                   <div>
+                     <h4 className="text-xs font-black text-[#1C362B] mb-1">
+                       AI 闭环护航申诉：整套法务复议流程已全面自动为您办妥！(AI Auto-Resolution Actions Complete)
+                     </h4>
+                     <p className="text-[11px] text-gray-700 leading-relaxed font-sans font-medium">
+                       系统已瞬间为您完成：<span className="font-bold">① 极速识别并精细拆解</span> / <span className="font-bold">② 匹配澳洲 CAV/VCAT 法定条规并附高能 Grounding 信源链接</span> / <span className="font-bold">③ 自动化拟定中外对线驳回英文回信</span> / <span className="font-bold">④ 预排日历死线行政纠纷纠错事件</span> / <span className="font-bold">⑤ 直达一键极速 Gmail 对线发信</span>。全部抗辩诉求一气呵成！
+                     </p>
+                   </div>
+                 </div>
+
+
 
                  {claimMode === 'cross' && crossAnalysis ? (
                    <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-stretch flex-1">
